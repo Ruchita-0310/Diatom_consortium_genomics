@@ -125,7 +125,10 @@ pypolca run -a sr_poly.fasta \
 -1 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz \
 -2 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz \
 -t 12 -o sr_pypolca_output --careful
-
+```
+Run BUSCO on pyloca_corrected.fasta
+```
+busco -i pyloca_corrected.fasta -l busco_downloads/lineages/eukaryota_odb10 -o busco_report -m genome
 ```
 # Map coverage
 ```
