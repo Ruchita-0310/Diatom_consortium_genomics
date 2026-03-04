@@ -105,118 +105,73 @@ Run BUSCO again
 ```
 busco -i scaffolds_FINAL.fasta -l busco_downloads/lineages/eukaryota_odb10 -o busco_report -m genome
 ```
-# Depth
+# Polishing - SR
 ```
-bwa index sr_pypolca_corrected.fasta
-bwa mem -t 16 sr_pypolca_corrected.fasta /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz > sr_alignments.sam
-samtools view -Sb sr_alignments.sam | samtools sort -o sr_alignments.sorted.bam
-samtools index sr_alignments.sorted.bam
-jgi_summarize_bam_contig_depths --outputDepth sr_depth.txt sr_alignments.sorted.bam
+##Polypolish
+bwa mem -t 16 -a /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/medaka_euk_polished/consensus.fasta /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz > alignments_1.sam
+
+bwa mem -t 16 -a /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/medaka_euk_polished/consensus.fasta /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz > alignments_2.sam
+
+###### Polypolish insert size filter ############
+polypolish filter --in1 alignments_1.sam --in2 alignments_2.sam --out1 filtered_1.sam --out2 filtered_2.sam
+
+## Pypolca
+polypolish polish \
+  /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/medaka_euk_polished/consensus.fasta \
+  filtered_1.sam filtered_2.sam \
+  > sr_poly.fasta
+
+pypolca run -a sr_poly.fasta \
+-1 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz \
+-2 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz \
+-t 12 -o sr_pypolca_output --careful
+
 ```
-# GC content
-For Hi-C and SR
+# Map coverage
 ```
-seqkit fx2tab -g hi-c_pypolca_corrected.fasta | awk '{print $1, $3}' > gc.txt
-seqkit fx2tab -g sr_pypolca_corrected.fasta | awk '{print $1, $3}' > gc.txt
+bwa index pypolca_corrected.fasta
+bwa mem -t 32 pypolca_corrected.fasta R1.fastq.gz R2.fastq.gz | \
+samtools sort -o illumina.bam
+samtools index illumina.bam
 ```
-# Diamond
-For Hi-C and SR
+# BlobToolKit
 ```
-diamond blastx \
-  -d /work/ebg_lab/referenceDatabases/NR_2024Feb/nr_diamond/nr.dmnd \
-  -q pypolca_corrected.fasta \
-  -o diamond.out \
-  -f 6 qseqid staxids bitscore evalue \
-  -p 32 \
-  --sensitive \
-  -k 1
+conda create -n blobtoolkit -c conda-forge -c bioconda blobtoolkit
+conda activate blobtoolkit
+
+blobtools create \
+  --fasta pypolca_corrected.fasta \
+  diatom_blob
+
+blobtools add \
+  --cov illumina.bam \
+  diatom_blob
+
+# Extract contig IDs, Extract lengths, Extract GC, Extract coverage (Illumina), 
+jq -r '.values[]' diatom_blob/identifiers.json > ids.txt
+jq -r '.values[]' diatom_blob/length.json > lengths.txt
+jq -r '.values[]' diatom_blob/gc.json > gc.txt
+jq -r '.values[]' diatom_blob/illumina_cov.json > cov.txt
+
+# Combine into one TSV: ID, Length, GC, Coverage
+paste ids.txt lengths.txt gc.txt cov.txt > diatom_blob_view.tsv
+
+# Nuclear diatom contigs
+awk '$3>=0.45 && $3<=0.52 && $4>=20 {print $1}' diatom_blob_view.tsv > nuclear_contigs.txt
+
+# Plastid contigs (high coverage, low GC example)
+awk '$2>=100000 {print $1}' diatom_blob_view.tsv > plastid_large_contigs.txt
+
+# Mitochondrial contigs (medium coverage, smaller size)
+awk '$2<=100000 && $3>=0.42 && $3<=0.44 {print $1}' diatom_blob_view.tsv > mito_contigs.txt
+
+seqtk subseq pypolca_corrected.fasta nuclear_contigs.txt > diatom_nuclear.fasta
+seqtk subseq pypolca_corrected.fasta plastid_contigs.txt > diatom_plastid.fasta
+seqtk subseq pypolca_corrected.fasta mito_contigs.txt > diatom_mito.fasta
+
+stats.sh in=diatom_nuclear.fasta out=diatom_nuclear_stats.txt
+stats.sh in=diatom_plastid.fasta out=plastid_stats.txt
+stats.sh in=diatom_mito.fasta out=mito_stats.txt
 ```
-For tax classification
-```
-awk 'BEGIN{FS="\t"; OFS="\t"} 
-NR==FNR { lineage[$1]=$2; next } 
-{ print $0, lineage[$2] }' \
-/work/ebg_lab/referenceDatabases/NR_2024Feb/nr_diamond/fullnamelineage.dmp \
-diamond.out > diamond_lineage.tsv
-```
-Extract Bacillariophyta
-For Hi-C and SR
-```
-seqkit grep -f diatom_scaffold_list.txt pypolca_corrected.fasta > diatom_only.fasta
-```
-# GC vs Coverage scatter plot
-For Hi-C and SR
-```
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-"""
-Merge coverage, GC, and DIAMOND lineage to identify diatom scaffolds.
-Produces:
- - diatom_scaffold_list.txt
- - GC vs Coverage scatter plot (highlighting Bacillariophyta)
-"""
-
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# -----------------------------
-# 1️⃣ Load coverage
-# -----------------------------
-depth_file = "sr_depth.txt"
-depth_df = pd.read_csv(depth_file, sep="\t", comment='#', 
-                       usecols=['contigName','totalAvgDepth'])
-depth_df.rename(columns={'contigName':'scaffold','totalAvgDepth':'coverage'}, inplace=True)
-
-# -----------------------------
-# 2️⃣ Load GC content
-# -----------------------------
-gc_file = "gc.txt"  # scaffold \t GC%
-gc_df = pd.read_csv(gc_file, sep="\s+", header=None, names=['scaffold','GC'])
-
-# -----------------------------
-# 3️⃣ Load DIAMOND lineage
-# -----------------------------
-diamond_file = "diamond_lineage.tsv"  # scaffold, taxid, bitscore, evalue, lineage
-diamond_df = pd.read_csv(diamond_file, sep="\t")
-
-# -----------------------------
-# 4️⃣ Merge all
-# -----------------------------
-merged = depth_df.merge(gc_df, on='scaffold', how='outer')
-merged = merged.merge(diamond_df[['scaffold','lineage']], on='scaffold', how='left')
-
-# -----------------------------
-# 5️⃣ Identify diatom scaffolds
-# -----------------------------
-diatom = merged[merged['lineage'].str.contains("Bacillariophyta", na=False)]
-diatom_scaffolds = diatom['scaffold'].tolist()
-
-# Save scaffold list
-with open("diatom_scaffold_list.txt", "w") as f:
-    for s in diatom_scaffolds:
-        f.write(f"{s}\n")
-
-print(f"Found {len(diatom_scaffolds)} Bacillariophyta scaffolds. Saved to diatom_scaffold_list.txt")
-
-# -----------------------------
-# 6️⃣ Plot GC vs Coverage
-# -----------------------------
-plt.figure(figsize=(8,6))
-
-# Plot all scaffolds in light grey
-plt.scatter(merged['GC'], merged['coverage'], color='lightgrey', s=10, alpha=0.5, label='All scaffolds')
-
-# Highlight Bacillariophyta scaffolds in blue
-plt.scatter(diatom['GC'], diatom['coverage'], color='blue', s=20, alpha=0.7, label='Bacillariophyta')
-
-plt.xlabel("GC content (%)")
-plt.ylabel("Coverage (X)")
-plt.yscale('log')
-plt.title("GC vs Coverage")
-plt.legend()
-plt.tight_layout()
-plt.savefig("gc_vs_coverage.png", dpi=300)
-plt.show()
-```
 
