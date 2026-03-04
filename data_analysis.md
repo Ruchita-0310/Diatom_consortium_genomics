@@ -4,7 +4,6 @@ Basecalled using Guppy
 flye --nano-raw pass_trim.fastq.gz --meta -g 50m --min-overlap 5000 --out-dir flye_out_new -i 3 --threads 8
 ```
 # 2. Mapping
-```
 ## Mapping Short Reads (SR) to the assembled reads
 ```
 minimap2 -ax sr /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/guppy_flye_assembly.fasta Diatoms_merged.fastq.gz > sr_alignment.sam
@@ -16,7 +15,7 @@ samtools idxstats alignment_sorted.bam | sort -k3,3rn > sr_all_nanopore_hits.tsv
 samtools depth alignment_sorted.bam > sr_depth.txt
 awk '{sum[$1]+=$3; count[$1]++} END {for (c in sum) print c, sum[c]/count[c]}' sr_depth.txt | sort -k2,2nr > sr_mean_depth.tsv
 ```
-# Polishing
+# 3. Polishing
 ## Medaka - LR polising
 ```
 medaka_consensus \
@@ -50,14 +49,14 @@ Run BUSCO on pyloca_corrected.fasta
 ```
 busco -i pyloca_corrected.fasta -l busco_downloads/lineages/eukaryota_odb10 -o busco_report -m genome
 ```
-# Map coverage
+# 4. Map coverage
 ```
 bwa index pypolca_corrected.fasta
 bwa mem -t 32 pypolca_corrected.fasta R1.fastq.gz R2.fastq.gz | \
 samtools sort -o illumina.bam
 samtools index illumina.bam
 ```
-# BlobToolKit
+# 5. BlobToolKit
 ```
 conda create -n blobtoolkit -c conda-forge -c bioconda blobtoolkit
 conda activate blobtoolkit
@@ -96,5 +95,3 @@ stats.sh in=diatom_nuclear.fasta out=diatom_nuclear_stats.txt
 stats.sh in=diatom_plastid.fasta out=plastid_stats.txt
 stats.sh in=diatom_mito.fasta out=mito_stats.txt
 ```
-
-
