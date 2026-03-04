@@ -95,3 +95,131 @@ stats.sh in=diatom_nuclear.fasta out=diatom_nuclear_stats.txt
 stats.sh in=diatom_plastid.fasta out=plastid_stats.txt
 stats.sh in=diatom_mito.fasta out=mito_stats.txt
 ```
+# HMM way
+```
+#!/bin/bash
+#SBATCH --job-name=diatom_manual_blob
+#SBATCH --output=diatom_manual_blob.%j.out
+#SBATCH --error=diatom_manual_blob.%j.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=32
+#SBATCH --time=120:00:00
+#SBATCH --mem=150G
+###SBATCH --partition=cpu2023
+
+# -----------------------------------------
+# Load modules / activate conda env
+# -----------------------------------------
+module load miniconda3
+module load bwa/0.7.17
+module load minimap2/2.24
+module load samtools/1.17
+module load bbmap/38.84
+module load diamond/2.0.6
+module load repeatmodeler/2.0.1
+module load repeatmasker/4.1.1
+module load ebg_java/11.0.1
+module load hmmer/3.3.2
+
+conda activate diatom_env   # env with polypolish, busco, python tools
+
+# -----------------------------------------
+# User variables
+# -----------------------------------------
+ASSEMBLY="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_out/pypolca_corrected.fasta"
+ONT_READS="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/pass_trim.fastq.gz"
+ILLUMINA_R1="/work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz"
+ILLUMINA_R2="/work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz"
+THREADS=32
+
+NUCLEAR_FASTA="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_out/diatom_nuclear.fasta"
+POLISHED_FASTA="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_out/diatom_nuclear_polished.fasta"
+BUSCO_LINEAGE="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/busco_downloads/lineages/stramenopiles_odb10"
+
+MITO_HMM="/work/ebg_lab/eb/diatom_consortia/markers/mito_markers.hmm"
+PLASTID_HMM="/work/ebg_lab/eb/diatom_consortia/markers/plastid_markers.hmm"
+
+# -----------------------------------------
+# Step 1: Map reads and calculate coverage
+# -----------------------------------------
+echo "[1] Mapping Illumina reads and calculating coverage..."
+bwa index $ASSEMBLY
+bwa mem -t $THREADS $ASSEMBLY $ILLUMINA_R1 $ILLUMINA_R2 | samtools sort -@ $THREADS -o illumina.bam
+samtools index illumina.bam
+
+samtools depth -aa illumina.bam | \
+awk '{cov[$1]+=$3; len[$1]++} END {for(c in cov) print c, cov[c]/len[c]}' > illumina_cov.tsv
+
+echo "[2] Mapping ONT reads and calculating coverage..."
+minimap2 -ax map-ont -t $THREADS $ASSEMBLY $ONT_READS | samtools sort -@ $THREADS -o ont.bam
+samtools index ont.bam
+
+samtools depth -aa ont.bam | \
+awk '{cov[$1]+=$3; len[$1]++} END {for(c in cov) print c, cov[c]/len[c]}' > ont_cov.tsv
+
+# -----------------------------------------
+# Step 2: Calculate GC content
+# -----------------------------------------
+echo "[3] Calculating GC content per contig..."
+stats.sh in=$ASSEMBLY out=assembly_stats.txt
+
+# Extract contig name + GC fraction for downstream filtering
+awk '/^>/{name=$1; getline seq; gsub(/[^GCgc]/,"",seq); gc=length(seq)/length($0); print name, gc}' $ASSEMBLY > gc_content.tsv
+
+# -----------------------------------------
+# Step 3: Search for organellar marker genes
+# -----------------------------------------
+echo "[4] Searching for mitochondrial and plastid contigs..."
+hmmpress $MITO_HMM
+hmmpress $PLASTID_HMM
+
+hmmsearch --tblout mito_hits.tbl $MITO_HMM $ASSEMBLY
+hmmsearch --tblout plastid_hits.tbl $PLASTID_HMM $ASSEMBLY
+
+awk '{if($1!~/^#/){print $1}}' mito_hits.tbl | sort | uniq > mito_contigs.txt
+awk '{if($1!~/^#/){print $1}}' plastid_hits.tbl | sort | uniq > plastid_contigs.txt
+
+# -----------------------------------------
+# Step 4: Assign nuclear contigs using coverage + GC + marker hits
+# -----------------------------------------
+echo "[5] Defining nuclear contigs..."
+# Start from all contigs not matching mitochondrial/plastid markers
+awk 'NR==FNR{org[$1]=1; next} !($1 in org)' mito_contigs.txt $ASSEMBLY | \
+awk 'NR==FNR{org[$1]=1; next} !($1 in org)' plastid_contigs.txt > nuclear_contigs_raw.txt
+
+# Filter by GC content (example range for diatom nuclear genome: 0.35–0.45)
+awk 'NR==FNR{gc[$1]=$2; next} ($1 in gc) && gc[$1]>=0.35 && gc[$1]<=0.45 {print $1}' gc_content.tsv nuclear_contigs_raw.txt > nuclear_contigs.txt
+
+# Extract nuclear contigs fasta
+awk 'NR==FNR{c[$1]=1; next} /^>/{f=($1 in c)?1:0} f' nuclear_contigs.txt $ASSEMBLY > $NUCLEAR_FASTA
+
+# -----------------------------------------
+# Step 5: Polypolish nuclear contigs
+# -----------------------------------------
+echo "[6] Mapping Illumina reads to nuclear contigs..."
+bwa index $NUCLEAR_FASTA
+bwa mem -t $THREADS $NUCLEAR_FASTA $ILLUMINA_R1 $ILLUMINA_R2 | samtools sort -@ $THREADS -o illumina_nuclear.bam
+samtools index illumina_nuclear.bam
+
+echo "[7] Running Polypolish..."
+polypolish $NUCLEAR_FASTA illumina_nuclear.bam > $POLISHED_FASTA
+
+# Clean up BAM/SAM files
+rm -f *.bam *.bam.bai *.sam
+
+# -----------------------------------------
+# Step 6: BUSCO completeness check
+# -----------------------------------------
+echo "[8] Running BUSCO..."
+busco -i $POLISHED_FASTA -l $BUSCO_LINEAGE -m genome -c $THREADS -o busco_nuclear
+
+# -----------------------------------------
+# Step 7: Repeat identification and masking
+# -----------------------------------------
+echo "[9] Building repeat library and masking..."
+BuildDatabase -name nuclear_db $POLISHED_FASTA
+RepeatModeler -database nuclear_db -pa $THREADS -LTRStruct
+RepeatMasker -pa $THREADS -lib nuclear_db-families.fa $POLISHED_FASTA
+
+echo "[10] Pipeline complete!"
+```
