@@ -26,24 +26,25 @@ medaka_consensus \
 ```
 # Polishing - SR
 ```
-##Polypolish
+## Mapping ###
 bwa mem -t 16 -a /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/medaka_euk_polished/consensus.fasta /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz > alignments_1.sam
 
 bwa mem -t 16 -a /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/medaka_euk_polished/consensus.fasta /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz > alignments_2.sam
 
-###### Polypolish insert size filter ############
+### Polypolish filter ###
 polypolish filter --in1 alignments_1.sam --in2 alignments_2.sam --out1 filtered_1.sam --out2 filtered_2.sam
 
-## Pypolca
+### Polypolish filter ###
 polypolish polish \
   /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/medaka_euk_polished/consensus.fasta \
   filtered_1.sam filtered_2.sam \
   > sr_poly.fasta
 
+### Pypolca ###
 pypolca run -a sr_poly.fasta \
--1 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz \
--2 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz \
--t 12 -o sr_pypolca_output --careful
+  -1 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz \
+  -2 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz \
+  -t 12 -o sr_pypolca_output --careful
 ```
 Run BUSCO on pyloca_corrected.fasta
 ```
