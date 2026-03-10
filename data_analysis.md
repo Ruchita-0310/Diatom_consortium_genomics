@@ -49,14 +49,45 @@ Run BUSCO on pyloca_corrected.fasta
 ```
 busco -i pyloca_corrected.fasta -l busco_downloads/lineages/eukaryota_odb10 -o busco_report -m genome
 ```
-# 4. Map coverage
+# 4. Metabat2
+```
+conda create -n metabat2_v2 -c conda-forge -c bioconda metabat2 libdeflate=1.10
+
+minimap2 -ax map-ont -t 16 1_sr_pypolca_output/pypolca_corrected.fasta pass_trim.fastq.gz | \
+samtools view -@ 16 -bS - | \
+samtools sort -@ 16 -m 10G -o aligned_reads.sorted.bam
+
+samtools index -@ 16 aligned_reads.sorted.bam
+
+samtools index -@ 16 aligned_reads.sorted.bam
+
+# Summarize Depth
+echo "Summarizing depth..."
+jgi_summarize_bam_contig_depths --outputDepth depth.txt --percentIdentity 85 aligned_reads.sorted.bam
+
+# Binning
+echo "Starting MetaBAT2..."
+mkdir -p 2_metabat2_bins
+metabat2 -i 1_sr_pypolca_output/pypolca_corrected.fasta -a depth.txt -o 2_metabat2_bins/bin -m 1500 -t 16 --unbinned
+```
+# 5. CheckM2
+```
+checkm2 predict --threads 16 --input 2_metabat2_bins/ --output_directory 3_checkm2_results
+```
+# 6. GTDB classification
+```
+# Assign taxonomy using the Genome Taxonomy Database
+gtdbtk classify_wf --genome_dir 2_metabat2_bins/ --out_dir 4_gtdbtk_output --cpus 16 -x fa
+```
+# Diatom way
+## Map coverage
 ```
 bwa index pypolca_corrected.fasta
 bwa mem -t 32 pypolca_corrected.fasta R1.fastq.gz R2.fastq.gz | \
 samtools sort -o illumina.bam
 samtools index illumina.bam
 ```
-# 5. BlobToolKit
+### BlobToolKit
 ```
 conda create -n blobtoolkit -c conda-forge -c bioconda blobtoolkit
 conda activate blobtoolkit
@@ -95,7 +126,7 @@ stats.sh in=diatom_nuclear.fasta out=diatom_nuclear_stats.txt
 stats.sh in=diatom_plastid.fasta out=plastid_stats.txt
 stats.sh in=diatom_mito.fasta out=mito_stats.txt
 ```
-# HMM way
+### HMM way
 ```
 #!/bin/bash
 #SBATCH --job-name=diatom_manual_blob
@@ -223,3 +254,4 @@ RepeatMasker -pa $THREADS -lib nuclear_db-families.fa $POLISHED_FASTA
 
 echo "[10] Pipeline complete!"
 ```
+
