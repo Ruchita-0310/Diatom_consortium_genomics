@@ -157,14 +157,14 @@ conda activate diatom_env   # env with polypolish, busco, python tools
 # -----------------------------------------
 # User variables
 # -----------------------------------------
-ASSEMBLY="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_out/pypolca_corrected.fasta"
+ASSEMBLY="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_out/pypolca_corrected.fasta"
 ONT_READS="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/pass_trim.fastq.gz"
 ILLUMINA_R1="/work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz"
 ILLUMINA_R2="/work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz"
 THREADS=32
 
-NUCLEAR_FASTA="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_out/diatom_nuclear.fasta"
-POLISHED_FASTA="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_out/diatom_nuclear_polished.fasta"
+NUCLEAR_FASTA="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_out/diatom_nuclear.fasta"
+POLISHED_FASTA="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_out/diatom_nuclear_polished.fasta"
 BUSCO_LINEAGE="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/busco_downloads/lineages/stramenopiles_odb10"
 
 MITO_HMM="/work/ebg_lab/eb/diatom_consortia/markers/mito_markers.hmm"
