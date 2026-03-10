@@ -62,11 +62,9 @@ samtools index -@ 16 aligned_reads.sorted.bam
 samtools index -@ 16 aligned_reads.sorted.bam
 
 # Summarize Depth
-echo "Summarizing depth..."
 jgi_summarize_bam_contig_depths --outputDepth depth.txt --percentIdentity 85 aligned_reads.sorted.bam
 
 # Binning
-echo "Starting MetaBAT2..."
 mkdir -p 2_metabat2_bins
 metabat2 -i 1_sr_pypolca_output/pypolca_corrected.fasta -a depth.txt -o 2_metabat2_bins/bin -m 1500 -t 16 --unbinned
 ```
@@ -78,6 +76,22 @@ checkm2 predict --threads 16 --input 2_metabat2_bins/ --output_directory 3_check
 ```
 # Assign taxonomy using the Genome Taxonomy Database
 gtdbtk classify_wf --genome_dir 2_metabat2_bins/ --out_dir 4_gtdbtk_output --cpus 16 -x fa
+```
+# 7. CoverM
+```
+conda create -n coverm -c bioconda -c conda-forge coverm
+conda activate coverm
+
+coverm genome \
+    --genome-fasta-directory 2_metabat2_bins/bac_bins \
+    --genome-fasta-extension fa \
+    -1 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz \
+    -2 /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz \
+    --mapper bwa-mem \
+    -m mean relative_abundance covered_fraction \
+    --threads 8 \
+    --min-read-percent-identity 95 \
+    -o bac_output_coverm.tsv
 ```
 # Diatom way
 ## Map coverage
@@ -126,109 +140,3 @@ stats.sh in=diatom_nuclear.fasta out=diatom_nuclear_stats.txt
 stats.sh in=diatom_plastid.fasta out=plastid_stats.txt
 stats.sh in=diatom_mito.fasta out=mito_stats.txt
 ```
-### HMM way
-```
-#!/bin/bash
-#SBATCH --job-name=diatom_manual_blob
-#SBATCH --output=diatom_manual_blob.%j.out
-#SBATCH --error=diatom_manual_blob.%j.err
-#SBATCH --nodes=1
-#SBATCH --ntasks=32
-#SBATCH --time=120:00:00
-#SBATCH --mem=150G
-
-# -----------------------------------------
-# Load modules
-# -----------------------------------------
-module load bbmap/38.84              
-module load bwa/0.7.17               
-module load miniconda3/samtools      
-module load hmmer/v3.3               
-module load prodigal/v2.6.3          
-module load repeatmodeler/2.0.1      
-module load repeatmasker/4.1.1
-
-conda activate diatom_env 
-
-# -----------------------------------------
-# Variables
-# -----------------------------------------
-ASSEMBLY="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_out/pypolca_corrected.fasta"
-ILLUMINA_R1="/work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz"
-ILLUMINA_R2="/work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz"
-THREADS=32
-
-MITO_HMM="/work/ebg_lab/eb/diatom_consortia/markers/mito_markers.hmm"
-PLASTID_HMM="/work/ebg_lab/eb/diatom_consortia/markers/plastid_markers.hmm"
-BUSCO_LINEAGE="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/busco_downloads/lineages/stramenopiles_odb10"
-
-# -----------------------------------------
-# Step 1: Mapping and Coverage
-# -----------------------------------------
-echo "[1] Calculating Illumina coverage..."
-bwa index $ASSEMBLY
-bwa mem -t $THREADS $ASSEMBLY $ILLUMINA_R1 $ILLUMINA_R2 | samtools sort -@ $THREADS -o illumina_full.bam
-samtools index illumina_full.bam
-
-# Output: ContigID <tab> AverageDepth
-samtools depth -aa illumina_full.bam | awk '{cov[$1]+=$3; len[$1]++} END {for(c in cov) print c"\t"cov[c]/len[c]}' > illumina_cov.tsv
-
-# -----------------------------------------
-# Step 2: Marker Search (Organelle Detection)
-# -----------------------------------------
-echo "[2] Predicting proteins and searching for markers..."
-prodigal -i $ASSEMBLY -a proteins.faa -p meta -q
-
-hmmsearch --tblout mito.tbl --cpu $THREADS $MITO_HMM proteins.faa
-hmmsearch --tblout plastid.tbl --cpu $THREADS $PLASTID_HMM proteins.faa
-
-# Create a combined list of organelle contig IDs
-awk '!/^#/ {print $1}' mito.tbl plastid.tbl | sed 's/_[0-9]*$//' | sort -u > organelle_ids.txt
-
-# -----------------------------------------
-# Step 3: Filtering (AWK-based Master Table)
-# -----------------------------------------
-echo "[3] Filtering for nuclear contigs using AWK..."
-# Get Length and GC via BBTools (format 6: name length gc ...)
-stats.sh in=$ASSEMBLY format=6 > assembly_stats.tsv
-
-# Join stats with coverage and filter
-# Logic: GC 0.30-0.50, Depth > 5, Not in organelle_ids.txt
-awk 'BEGIN {FS="\t"; OFS="\t"} 
-    # Load organelle IDs into an array
-    NR==FNR {org[$1]=1; next} 
-    # Load coverage into an array (from illumina_cov.tsv)
-    FILENAME=="illumina_cov.tsv" {cov[$1]=$2; next}
-    # Process assembly_stats.tsv
-    FILENAME=="assembly_stats.tsv" {
-        name=$1; gc=$3; 
-        if (name in cov && !(name in org) && gc >= 0.30 && gc <= 0.50 && cov[name] > 5) {
-            print name
-        }
-    }' organelle_ids.txt illumina_cov.tsv assembly_stats.tsv > nuclear_ids.txt
-
-# Extract Nuclear FASTA using AWK
-awk 'NR==FNR {a[$1]; next} /^>/ {f=0; id=$1; sub(/^>/,"",id); if (id in a) f=1} f' nuclear_ids.txt $ASSEMBLY > diatom_nuclear.fasta
-
-# -----------------------------------------
-# Step 4: Polypolish
-# -----------------------------------------
-echo "[4] Polishing nuclear genome..."
-bwa index diatom_nuclear.fasta
-bwa mem -t $THREADS -a diatom_nuclear.fasta $ILLUMINA_R1 > aln1.sam
-bwa mem -t $THREADS -a diatom_nuclear.fasta $ILLUMINA_R2 > aln2.sam
-polypolish diatom_nuclear.fasta aln1.sam aln2.sam > diatom_nuclear_polished.fasta
-
-# -----------------------------------------
-# Step 5: BUSCO & Repeats
-# -----------------------------------------
-echo "[5] Final QC and Masking..."
-busco -i diatom_nuclear_polished.fasta -l $BUSCO_LINEAGE -m genome -c $THREADS -o busco_out
-
-BuildDatabase -name nuc_db diatom_nuclear_polished.fasta
-RepeatModeler -database nuc_db -pa $THREADS -LTRStruct
-RepeatMasker -pa $THREADS -lib nuc_db-families.fa diatom_nuclear_polished.fasta
-
-echo "Pipeline complete."
-```
-
