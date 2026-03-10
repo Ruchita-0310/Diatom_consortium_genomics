@@ -93,11 +93,3 @@ coverm genome \
     --min-read-percent-identity 95 \
     -o bac_output_coverm.tsv
 ```
-# Diatom way
-## Map coverage
-```
-bwa index pypolca_corrected.fasta
-bwa mem -t 32 pypolca_corrected.fasta R1.fastq.gz R2.fastq.gz | \
-samtools sort -o illumina.bam
-samtools index illumina.bam
-```
