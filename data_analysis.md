@@ -136,122 +136,99 @@ stats.sh in=diatom_mito.fasta out=mito_stats.txt
 #SBATCH --ntasks=32
 #SBATCH --time=120:00:00
 #SBATCH --mem=150G
-###SBATCH --partition=cpu2023
 
 # -----------------------------------------
-# Load modules / activate conda env
+# Load modules
 # -----------------------------------------
-module load miniconda3
-module load bwa/0.7.17
-module load minimap2/2.24
-module load samtools/1.17
-module load bbmap/38.84
-module load diamond/2.0.6
-module load repeatmodeler/2.0.1
+module load bbmap/38.84              
+module load bwa/0.7.17               
+module load miniconda3/samtools      
+module load hmmer/v3.3               
+module load prodigal/v2.6.3          
+module load repeatmodeler/2.0.1      
 module load repeatmasker/4.1.1
-module load ebg_java/11.0.1
-module load hmmer/3.3.2
 
-conda activate diatom_env   # env with polypolish, busco, python tools
+conda activate diatom_env 
 
 # -----------------------------------------
-# User variables
+# Variables
 # -----------------------------------------
 ASSEMBLY="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_out/pypolca_corrected.fasta"
-ONT_READS="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/pass_trim.fastq.gz"
 ILLUMINA_R1="/work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz"
 ILLUMINA_R2="/work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz"
 THREADS=32
 
-NUCLEAR_FASTA="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_out/diatom_nuclear.fasta"
-POLISHED_FASTA="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_out/diatom_nuclear_polished.fasta"
-BUSCO_LINEAGE="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/busco_downloads/lineages/stramenopiles_odb10"
-
 MITO_HMM="/work/ebg_lab/eb/diatom_consortia/markers/mito_markers.hmm"
 PLASTID_HMM="/work/ebg_lab/eb/diatom_consortia/markers/plastid_markers.hmm"
+BUSCO_LINEAGE="/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/busco_downloads/lineages/stramenopiles_odb10"
 
 # -----------------------------------------
-# Step 1: Map reads and calculate coverage
+# Step 1: Mapping and Coverage
 # -----------------------------------------
-echo "[1] Mapping Illumina reads and calculating coverage..."
+echo "[1] Calculating Illumina coverage..."
 bwa index $ASSEMBLY
-bwa mem -t $THREADS $ASSEMBLY $ILLUMINA_R1 $ILLUMINA_R2 | samtools sort -@ $THREADS -o illumina.bam
-samtools index illumina.bam
+bwa mem -t $THREADS $ASSEMBLY $ILLUMINA_R1 $ILLUMINA_R2 | samtools sort -@ $THREADS -o illumina_full.bam
+samtools index illumina_full.bam
 
-samtools depth -aa illumina.bam | \
-awk '{cov[$1]+=$3; len[$1]++} END {for(c in cov) print c, cov[c]/len[c]}' > illumina_cov.tsv
-
-echo "[2] Mapping ONT reads and calculating coverage..."
-minimap2 -ax map-ont -t $THREADS $ASSEMBLY $ONT_READS | samtools sort -@ $THREADS -o ont.bam
-samtools index ont.bam
-
-samtools depth -aa ont.bam | \
-awk '{cov[$1]+=$3; len[$1]++} END {for(c in cov) print c, cov[c]/len[c]}' > ont_cov.tsv
+# Output: ContigID <tab> AverageDepth
+samtools depth -aa illumina_full.bam | awk '{cov[$1]+=$3; len[$1]++} END {for(c in cov) print c"\t"cov[c]/len[c]}' > illumina_cov.tsv
 
 # -----------------------------------------
-# Step 2: Calculate GC content
+# Step 2: Marker Search (Organelle Detection)
 # -----------------------------------------
-echo "[3] Calculating GC content per contig..."
-stats.sh in=$ASSEMBLY out=assembly_stats.txt
+echo "[2] Predicting proteins and searching for markers..."
+prodigal -i $ASSEMBLY -a proteins.faa -p meta -q
 
-# Extract contig name + GC fraction for downstream filtering
-awk '/^>/{name=$1; getline seq; gsub(/[^GCgc]/,"",seq); gc=length(seq)/length($0); print name, gc}' $ASSEMBLY > gc_content.tsv
+hmmsearch --tblout mito.tbl --cpu $THREADS $MITO_HMM proteins.faa
+hmmsearch --tblout plastid.tbl --cpu $THREADS $PLASTID_HMM proteins.faa
 
-# -----------------------------------------
-# Step 3: Search for organellar marker genes
-# -----------------------------------------
-echo "[4] Searching for mitochondrial and plastid contigs..."
-hmmpress $MITO_HMM
-hmmpress $PLASTID_HMM
-
-hmmsearch --tblout mito_hits.tbl $MITO_HMM $ASSEMBLY
-hmmsearch --tblout plastid_hits.tbl $PLASTID_HMM $ASSEMBLY
-
-awk '{if($1!~/^#/){print $1}}' mito_hits.tbl | sort | uniq > mito_contigs.txt
-awk '{if($1!~/^#/){print $1}}' plastid_hits.tbl | sort | uniq > plastid_contigs.txt
+# Create a combined list of organelle contig IDs
+awk '!/^#/ {print $1}' mito.tbl plastid.tbl | sed 's/_[0-9]*$//' | sort -u > organelle_ids.txt
 
 # -----------------------------------------
-# Step 4: Assign nuclear contigs using coverage + GC + marker hits
+# Step 3: Filtering (AWK-based Master Table)
 # -----------------------------------------
-echo "[5] Defining nuclear contigs..."
-# Start from all contigs not matching mitochondrial/plastid markers
-awk 'NR==FNR{org[$1]=1; next} !($1 in org)' mito_contigs.txt $ASSEMBLY | \
-awk 'NR==FNR{org[$1]=1; next} !($1 in org)' plastid_contigs.txt > nuclear_contigs_raw.txt
+echo "[3] Filtering for nuclear contigs using AWK..."
+# Get Length and GC via BBTools (format 6: name length gc ...)
+stats.sh in=$ASSEMBLY format=6 > assembly_stats.tsv
 
-# Filter by GC content (example range for diatom nuclear genome: 0.35–0.45)
-awk 'NR==FNR{gc[$1]=$2; next} ($1 in gc) && gc[$1]>=0.35 && gc[$1]<=0.45 {print $1}' gc_content.tsv nuclear_contigs_raw.txt > nuclear_contigs.txt
+# Join stats with coverage and filter
+# Logic: GC 0.30-0.50, Depth > 5, Not in organelle_ids.txt
+awk 'BEGIN {FS="\t"; OFS="\t"} 
+    # Load organelle IDs into an array
+    NR==FNR {org[$1]=1; next} 
+    # Load coverage into an array (from illumina_cov.tsv)
+    FILENAME=="illumina_cov.tsv" {cov[$1]=$2; next}
+    # Process assembly_stats.tsv
+    FILENAME=="assembly_stats.tsv" {
+        name=$1; gc=$3; 
+        if (name in cov && !(name in org) && gc >= 0.30 && gc <= 0.50 && cov[name] > 5) {
+            print name
+        }
+    }' organelle_ids.txt illumina_cov.tsv assembly_stats.tsv > nuclear_ids.txt
 
-# Extract nuclear contigs fasta
-awk 'NR==FNR{c[$1]=1; next} /^>/{f=($1 in c)?1:0} f' nuclear_contigs.txt $ASSEMBLY > $NUCLEAR_FASTA
-
-# -----------------------------------------
-# Step 5: Polypolish nuclear contigs
-# -----------------------------------------
-echo "[6] Mapping Illumina reads to nuclear contigs..."
-bwa index $NUCLEAR_FASTA
-bwa mem -t $THREADS $NUCLEAR_FASTA $ILLUMINA_R1 $ILLUMINA_R2 | samtools sort -@ $THREADS -o illumina_nuclear.bam
-samtools index illumina_nuclear.bam
-
-echo "[7] Running Polypolish..."
-polypolish $NUCLEAR_FASTA illumina_nuclear.bam > $POLISHED_FASTA
-
-# Clean up BAM/SAM files
-rm -f *.bam *.bam.bai *.sam
+# Extract Nuclear FASTA using AWK
+awk 'NR==FNR {a[$1]; next} /^>/ {f=0; id=$1; sub(/^>/,"",id); if (id in a) f=1} f' nuclear_ids.txt $ASSEMBLY > diatom_nuclear.fasta
 
 # -----------------------------------------
-# Step 6: BUSCO completeness check
+# Step 4: Polypolish
 # -----------------------------------------
-echo "[8] Running BUSCO..."
-busco -i $POLISHED_FASTA -l $BUSCO_LINEAGE -m genome -c $THREADS -o busco_nuclear
+echo "[4] Polishing nuclear genome..."
+bwa index diatom_nuclear.fasta
+bwa mem -t $THREADS -a diatom_nuclear.fasta $ILLUMINA_R1 > aln1.sam
+bwa mem -t $THREADS -a diatom_nuclear.fasta $ILLUMINA_R2 > aln2.sam
+polypolish diatom_nuclear.fasta aln1.sam aln2.sam > diatom_nuclear_polished.fasta
 
 # -----------------------------------------
-# Step 7: Repeat identification and masking
+# Step 5: BUSCO & Repeats
 # -----------------------------------------
-echo "[9] Building repeat library and masking..."
-BuildDatabase -name nuclear_db $POLISHED_FASTA
-RepeatModeler -database nuclear_db -pa $THREADS -LTRStruct
-RepeatMasker -pa $THREADS -lib nuclear_db-families.fa $POLISHED_FASTA
+echo "[5] Final QC and Masking..."
+busco -i diatom_nuclear_polished.fasta -l $BUSCO_LINEAGE -m genome -c $THREADS -o busco_out
 
-echo "[10] Pipeline complete!"
+BuildDatabase -name nuc_db diatom_nuclear_polished.fasta
+RepeatModeler -database nuc_db -pa $THREADS -LTRStruct
+RepeatMasker -pa $THREADS -lib nuc_db-families.fa diatom_nuclear_polished.fasta
+
+echo "Pipeline complete."
 ```
 
