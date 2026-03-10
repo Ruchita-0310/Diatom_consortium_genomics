@@ -1,3 +1,5 @@
+# Extra
+```
 #!/bin/bash
 #SBATCH --job-name=diatom_manual_blob
 #SBATCH --output=diatom_manual_blob.%j.out
@@ -138,3 +140,43 @@ RepeatModeler -database nuclear_db -pa $THREADS -LTRStruct
 RepeatMasker -pa $THREADS -lib nuclear_db-families.fa $POLISHED_FASTA
 
 echo "[10] Pipeline complete!"
+```
+# Blobtoolkit
+```
+conda create -n blobtoolkit -c conda-forge -c bioconda blobtoolkit
+conda activate blobtoolkit
+
+blobtools create \
+  --fasta pypolca_corrected.fasta \
+  diatom_blob
+
+blobtools add \
+  --cov illumina.bam \
+  diatom_blob
+
+# Extract contig IDs, Extract lengths, Extract GC, Extract coverage (Illumina), 
+jq -r '.values[]' diatom_blob/identifiers.json > ids.txt
+jq -r '.values[]' diatom_blob/length.json > lengths.txt
+jq -r '.values[]' diatom_blob/gc.json > gc.txt
+jq -r '.values[]' diatom_blob/illumina_cov.json > cov.txt
+
+# Combine into one TSV: ID, Length, GC, Coverage
+paste ids.txt lengths.txt gc.txt cov.txt > diatom_blob_view.tsv
+
+# Nuclear diatom contigs
+awk '$3>=0.45 && $3<=0.52 && $4>=20 {print $1}' diatom_blob_view.tsv > nuclear_contigs.txt
+
+# Plastid contigs (high coverage, low GC example)
+awk '$2>=100000 {print $1}' diatom_blob_view.tsv > plastid_large_contigs.txt
+
+# Mitochondrial contigs (medium coverage, smaller size)
+awk '$2<=100000 && $3>=0.42 && $3<=0.44 {print $1}' diatom_blob_view.tsv > mito_contigs.txt
+
+seqtk subseq pypolca_corrected.fasta nuclear_contigs.txt > diatom_nuclear.fasta
+seqtk subseq pypolca_corrected.fasta plastid_contigs.txt > diatom_plastid.fasta
+seqtk subseq pypolca_corrected.fasta mito_contigs.txt > diatom_mito.fasta
+
+stats.sh in=diatom_nuclear.fasta out=diatom_nuclear_stats.txt
+stats.sh in=diatom_plastid.fasta out=plastid_stats.txt
+stats.sh in=diatom_mito.fasta out=mito_stats.txt
+```
