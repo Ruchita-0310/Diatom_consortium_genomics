@@ -141,7 +141,15 @@ RepeatMasker -pa $THREADS -lib nuclear_db-families.fa $POLISHED_FASTA
 
 echo "[10] Pipeline complete!"
 ```
-# Blobtoolkit
+# Diatom way
+## Map coverage
+```
+bwa index pypolca_corrected.fasta
+bwa mem -t 32 pypolca_corrected.fasta R1.fastq.gz R2.fastq.gz | \
+samtools sort -o illumina.bam
+samtools index illumina.bam
+```
+## Blobtoolkit
 ```
 conda create -n blobtoolkit -c conda-forge -c bioconda blobtoolkit
 conda activate blobtoolkit
