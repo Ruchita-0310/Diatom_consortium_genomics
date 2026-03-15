@@ -93,3 +93,21 @@ coverm genome \
     --min-read-percent-identity 95 \
     -o bac_output_coverm.tsv
 ```
+# 8. MetaEUK combined with polished assembly
+```
+# 1. Load the module
+module load blast/2.10.0
+
+# 2. Run TBLASTN (Query: Protein | DB: DNA)
+# This uses the DB you already made with makeblastdb
+tblastn -query /work/ebg_lab/eb/diatom_consortia/sr_diatoms/metaeuk_result/sr_contigs_metaeuk_output.fna \
+-db /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_corrected.fasta \
+-outfmt 6 -max_target_seqs 1 -num_threads 16 -out bridge_results.txt
+
+# 3. Filter for High-Confidence Hits (E-value < 1e-10)
+awk '$5 < 1e-10 {print $2}' bridge_results.txt | sort | uniq > euk_contig_names_final.txt
+
+# 4. Extract the Final Eukaryotic Bin
+# Ensure seqtk is available (usually in your miniconda path)
+seqtk subseq /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_corrected.fasta euk_contig_names_final.txt > Diatom_Euk_Bin.fasta
+```
