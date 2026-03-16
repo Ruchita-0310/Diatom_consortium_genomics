@@ -24,7 +24,7 @@ medaka_consensus \
   -o medaka_euk_polished \
   -t 12
 ```
-# Polishing - SR
+## Polishing - SR
 ```
 ## Mapping ###
 bwa mem -t 16 -a /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/medaka_euk_polished/consensus.fasta /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R1_001.fastq.gz > alignments_1.sam
@@ -94,20 +94,78 @@ coverm genome \
     -o bac_output_coverm.tsv
 ```
 # 8. MetaEUK combined with polished assembly
+## Mapping
 ```
-# 1. Load the module
-module load blast/2.10.0
+# 1. Map the Eukaryotic Coding Sequences to the Polished Assembly
+# -x asm5 is for high-identity DNA sequences (>95% match)
+minimap2 -x asm5 -t 8 \
+/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_corrected.fasta \
+sr_contigs_metaeuk_output.codon.fas > metaeuk_dna_map.paf
 
-# 2. Run TBLASTN (Query: Protein | DB: DNA)
-# This uses the DB you already made with makeblastdb
-tblastn -query /work/ebg_lab/eb/diatom_consortia/sr_diatoms/metaeuk_result/sr_contigs_metaeuk_output.fna \
--db /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_corrected.fasta \
--outfmt 6 -max_target_seqs 1 -num_threads 16 -out bridge_results.txt
+# 2. Extract the IDs of the contigs that hold these genes
+# In PAF format, Column 6 is the Target (Assembly) name
+awk '($10/$11) >= 0.95 {print $6}' metaeuk_dna_map.paf | sort | uniq > 95_euk_contig_ids.txt
 
-# 3. Filter for High-Confidence Hits (E-value < 1e-10)
-awk '$5 < 1e-10 {print $2}' bridge_results.txt | sort | uniq > euk_contig_names_final.txt
+# 3. Create your final Diatom Bin
+seqtk subseq /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_corrected.fasta \
+95_euk_contig_ids.txt > 95_Diatom_Euk_Bin.fasta
+```
+## Stats
+```
+echo "Total Contigs:" && grep -c ">" Diatom_Euk_Bin.fasta
+#Total Contigs:
+#4295
 
-# 4. Extract the Final Eukaryotic Bin
-# Ensure seqtk is available (usually in your miniconda path)
-seqtk subseq /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/sr_pypolca_corrected.fasta euk_contig_names_final.txt > Diatom_Euk_Bin.fasta
+echo "Total Genome Size (bp):" && grep -v ">" Diatom_Euk_Bin.fasta | tr -d '\n' | wc -m
+#Total Genome Size (bp):
+#184,665,232
+
+stats.sh in=Diatom_Euk_Bin.fasta
+# N50 = 73.409 KB
+
+# Corrected Short-Read Mapping 
+# 1. Index the bin
+minimap2 -d diatom_index.mmi 95_Diatom_Euk_Bin.fasta
+
+# 2. Map & Sort (One efficient pipe)
+# Note: Output name changed to '_sorted.bam' here for clarity
+minimap2 -ax sr -t 16 diatom_index.mmi \
+  /path/to/R1_trimmed.fastq.gz \
+  /path/to/R2_trimmed.fastq.gz | \
+  samtools view -u - | \
+  samtools sort -@ 8 -o 95_Diatom_PE_sorted.bam
+
+# 3. Index the sorted bam
+# Use the exact same name from Step 2
+samtools index 95_Diatom_PE_sorted.bam
+
+# 4. Generate Flagstat
+samtools flagstat 95_Diatom_PE_sorted.bam > 95_diatom_short_read_stats.txt
+
+# 5. Calculate the Mean Depth
+samtools depth -a 95_Diatom_PE_sorted.bam | \
+  awk '{sum+=$3; cnt++} END {if (cnt > 0) print "Mean Depth = ", sum/cnt; else print "No data"}' > 95_mean_depth_result.txt
+
+# BUSCO
+busco -i 95_Diatom_Euk_Bin.fasta \
+        -o BUSCO_Diatom_Check \
+        -m genome \
+        -l /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/busco_downloads/stramenopiles_odb10 \
+        --metaeuk \
+        --cpu 32 
+```
+# 9. MetaEUK
+```
+conda create -n metaeuk -c bioconda -c conda-forge metaeuk -y
+conda activate metaeuk
+
+wget https://ftp.uniprot.org/pub/databases/uniprot/current_release/uniref/uniref90/uniref90.fasta.gz
+
+metaeuk easy-predict sr_pypolca_corrected.fasta \
+                   uniref90.fasta \
+                   Polished_MetaEUK \
+                   tmp_metaeuk \
+                   --threads 32
+
+/scratch/40098120
 ```
