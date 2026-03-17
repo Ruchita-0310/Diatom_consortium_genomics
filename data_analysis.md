@@ -166,6 +166,10 @@ metaeuk easy-predict sr_pypolca_corrected.fasta \
                    Polished_MetaEUK \
                    tmp_metaeuk \
                    --threads 32
+```
+outputs you need: Polished_MetaEUK.fas and Polished_MetaEUK.headersMap.tsv.             
+Next step:
+```
 # 1. Setup Scratch
 SCRATCH_DIR="/scratch/${SLURM_JOB_ID}"
 mkdir -p "$SCRATCH_DIR"
@@ -189,7 +193,10 @@ mmseqs createtaxdb tmp_metaeuk/5173768232209705533/targets \
 
 # 5. Move updated database back
 cp -r tmp_metaeuk/5173768232209705533/targets* /home/ruchita.solanki/tmp_metaeuk/5173768232209705533/
-
+```
+output you need: targets_taxonomy.     
+Next step:
+```
 # 1. Paths
 WORKDIR="/work/ebg_lab/eb/diatom_consortia/metaeuk"
 SCRATCH_DIR="/scratch/${SLURM_JOB_ID}"
