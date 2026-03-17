@@ -227,5 +227,5 @@ metaeuk taxtocontig \
 cp Final_Taxonomy_Results_per_contig.tsv "$WORKDIR/"
 cp Final_Taxonomy_Results_per_pred.tsv "$WORKDIR/"
 
-echo "Job finished successfully."
+/scratch/40151830
 ```
