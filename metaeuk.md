@@ -63,8 +63,6 @@ source ~/miniforge3/bin/activate metaeuk_env
 
 # 1. Paths - DOUBLE CHECK THESE
 DB_PATH="/home/ruchita.solanki/uniref90_new/uniref90_db"
-# This is the path to the 'taxonomy' folder created by mmseqs databases
-TAX_PATH="/home/ruchita.solanki/uniref90_new/uniref90_db"
 WORKDIR="/work/ebg_lab/eb/diatom_consortia/metaeuk"
 
 # 2. Setup Scratch
@@ -90,8 +88,8 @@ metaeuk taxtocontig \
     Polished_MetaEUK.fas \
     Polished_MetaEUK.headersMap.tsv \
     "$DB_PATH" \
-    "$TAX_PATH" \
     UniRef90_Contig_Taxonomy \
+    "$SCRATCH_DIR" \
     --threads 32 \
     --tax-lineage 1 \
     --lca-mode 3
