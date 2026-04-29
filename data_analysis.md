@@ -154,14 +154,7 @@ busco -i 95_Diatom_Euk_Bin.fasta \
         --metaeuk \
         --cpu 32 
 ```
-# 9. MetaEUK
-```
-conda create -n metaeuk -c bioconda -c conda-forge metaeuk -y
-conda activate metaeuk
-
-wget https://ftp.uniprot.org/pub/databases/uniprot/current_release/uniref/uniref90/uniref90.fasta.gz
-```
-# 10. Phylogenetic tree
+# 9. Phylogenetic tree
 ```
 clustalo -i 18S_new.fasta -o 18S_aligned.fasta
 trimal -in 18S_aligned.fasta -out 18S_trimmed.fasta -automated1
@@ -230,4 +223,38 @@ for leaf in to_prune:
 Phylo.write(tree, "cleaned_species_tree.tre", "newick")
 
 print(f"Removed {len(to_prune)} nodes.")
+```
+# 10. Transcriptome analysis 
+[Nf core metadenovo](https://github.com/nf-core/metatdenovo)
+```
+# --- 1. JAVA SETUP ---
+module purge
+module load java/openjdk-23.0.1
+export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+export PATH=$JAVA_HOME/bin:$PATH
+
+
+# --- 3. EXECUTION ---
+~/nextflow run nf-core/metatdenovo \
+    -profile singularity \
+    --input samplesheet.csv \
+    --outdir /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/2_new_results \
+    -w /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/work \
+    --assembler spades \
+    --orf_caller transdecoder \
+    --eggnog_dbpath /home/ruchita.solanki/eggnog_db \
+    --skip_kofam true \
+    --hmmfiles /home/ruchita.solanki/Pfam-A.hmm \
+    --eukulele_dbpath /home/ruchita.solanki/eukulele_db \
+    --eukulele_db mmetsp \
+    -resume \
+    -with-report report_skipK.html \
+    -with-timeline timeline_skipK.html
+```
+
+# 11. Identifying rRNA genes from transcriptome
+```
+barrnap --kingdom euk --threads 4 spades.transcripts.fa --outseq euk_transcript_rRNA.fna > diatom_euk_rRNA.gff
+barrnap --kingdom bac spades.transcripts.fa --outseq bac_transcript_rRNA.fna > diatom_bac_rRNA.gff
+barrnap --kingdom mito spades.transcripts.fa --outseq mito_transcript_rRNA.fna > diatom_mito_rRNA.gff
 ```
