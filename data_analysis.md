@@ -238,7 +238,7 @@ export PATH=$JAVA_HOME/bin:$PATH
 ~/nextflow run nf-core/metatdenovo \
     -profile singularity \
     --input samplesheet.csv \
-    --outdir /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/2_new_results \
+    --outdir /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results \
     -w /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/work \
     --assembler spades \
     --orf_caller transdecoder \
