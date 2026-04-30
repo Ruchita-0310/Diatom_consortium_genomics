@@ -201,7 +201,7 @@ barrnap --kingdom mito spades.transcripts.fa --outseq mito_transcript_rRNA.fna >
 Download mitogenome - MT742552 & chloroplast genome - MT742551
 ```
 conda create -n quast_env quast
-metaquast.py /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/2_metabat2_bins/bins/8_diatom.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ -o ./metaquast_output
-metaquast.py /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/2_metabat2_bins/bins/19_diatom.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ -o ./metaquast_output
+metaquast.py 8_diatom.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ -o ./8_metaquast_output
+metaquast.py /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ -o ./whole_metaquast_output
 
 ```
