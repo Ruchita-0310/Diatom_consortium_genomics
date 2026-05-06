@@ -203,5 +203,87 @@ Download mitogenome - MT742552 & chloroplast genome - MT742551
 conda create -n quast_env quast
 metaquast.py 8_diatom.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ -o ./8_metaquast_output
 metaquast.py /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ -o ./whole_metaquast_output
+```
+# 12. Diatom Genome Annotation Pipeline
+## 1. Environment & Software Requirements
+```
+# 1. Modular Environment (STAR, TSEBRA, Samtools)
+conda create -n tsebra_env python=3.9 -y
+conda activate tsebra_env
+conda install -c bioconda tsebra star augustus stringtie samtools -y
 
+# 2. BRAKER4 Container
+# Build the BRAKER3 container (the stable engine for BRAKER4)
+module load singularity/3.8.1
+singularity build braker3.sif docker://teambraker/braker3:latest
+```
+## 2. Transcriptomic Evidence Mapping - STAR 
+Genome annotation is significantly improved by providing "evidence" of where genes are actually expressed. We use STAR to perform splice-aware alignment of RNA-seq reads back to the genome. We align pooled RNA-seq triplicates to the genome to provide "evidence" of active gene expression.
+```
+# 1. Index the Genome
+# Note: Use the 'clean' fasta if headers were sanitized beforehand
+STAR --runThreadN 8 --runMode genomeGenerate --genomeDir ./genome_index --genomeFastaFiles 18_diatom.fasta --genomeSAindexNbases 10
+
+# 2. Run the Alignment
+BASE="/work/ebg_lab/eb/diatom_consortia/metatranscriptomics"
+
+STAR --runThreadN 12 \
+     --genomeDir ./genome_index \
+     --readFilesCommand zcat \
+     --readFilesIn $BASE/Li57991-Diatoms-1-4C_S1_R1_001.fastq.gz,$BASE/Li57992-Diatoms-2-4C_S2_R1_001.fastq.gz,$BASE/Li57993-Diatoms-3-4C_S3_R1_001.fastq.gz \
+     $BASE/Li57991-Diatoms-1-4C_S1_R2_001.fastq.gz,$BASE/Li57992-Diatoms-2-4C_S2_R2_001.fastq.gz,$BASE/Li57993-Diatoms-3-4C_S3_R2_001.fastq.gz \
+     --outSAMtype BAM SortedByCoordinate \
+     --outFileNamePrefix Diatoms_Combined_
+```
+## 3. Structural Signal Extraction - Hints
+```
+# 1. Sanitize Genome Headers (Regex to keep only the first word)
+# This step is CRITICAL: BAM and Fasta headers MUST match perfectly.
+samtools view -H Diatoms_Combined_Aligned.sortedByCoord.out.bam | sed 's/ .*//' > fixed_header.sam
+
+# 2. Intron Hint Generation
+# The 'src=E' tag identifies the data as Extrinsic RNA-seq evidence for TSEBRA logic.
+bam2hints --intronsonly --in=Diatoms_Combined_Aligned.sortedByCoord.out.bam --out=rna_hints.gff
+sed -i 's/$/src=E;/' rna_hints.gff
+```
+## 4. Pipeline Execution - BRAKER4
+```
+git clone https://github.com/Gaius-Augustus/BRAKER4.git
+cd BRAKER4
+
+# 1. Prepare samples.csv
+# Format: species,genome,rna_seq,protein
+echo "Diatom_18,/work/ebg_lab/eb/metatranscriptomics/18_diatom_clean.fasta,/work/ebg_lab/eb/metatranscriptomics/Diatoms_Combined_Aligned.sortedByCoord.out.bam," > samples.csv
+
+# Execute using the Singularity image and binding the specific work directory
+snakemake --use-singularity \
+    --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index:/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index" \
+    --cores 24 \
+    --config sif_image=braker3.sif
+```
+## 5. Manual Refinement - TSEBRA
+For granular control, we generate "hints" and use TSEBRA to merge ab-initio predictions with transcriptomic evidence.
+### 5.1 Generate Hints and Candidates
+```
+# Extract intron hints
+bam2hints --intronsonly --in=Diatoms_Combined_Aligned.sortedByCoord.out.bam --out=rna_hints.gff
+sed -i 's/$/src=E;/' rna_hints.gff
+
+# Generate Augustus predictions using Phaeodactylum as a proxy
+augustus --species=phaeodactylum_tricornutum 18_diatom.fasta > augustus_preds.gtf
+
+# Generate StringTie predictions
+stringtie Diatoms_Combined_Aligned.sortedByCoord.out.bam -o stringtie_preds.gtf
+```
+### 5.2 Final Integration
+```
+# Standardize formatting
+fix_gtf_ids.py --gtf stringtie_preds.gtf --out set1.gtf
+fix_gtf_ids.py --gtf augustus_preds.gtf --out set2.gtf
+
+# Run TSEBRA merge
+tsebra -g set1.gtf,set2.gtf -e rna_hints.gff -c default.cfg -o final_diatom_annotation.gtf
+
+# Final Cleanup and Prefixing
+rename_gtf.py --gtf final_diatom_annotation.gtf --prefix Diatom_Consortia --out 18_diatom_final.gtf
 ```
