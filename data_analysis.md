@@ -172,8 +172,7 @@ module load java/openjdk-23.0.1
 export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
 export PATH=$JAVA_HOME/bin:$PATH
 
-
-# --- 3. EXECUTION ---
+# --- 2. EXECUTION ---
 ~/nextflow run nf-core/metatdenovo \
     -profile singularity \
     --input samplesheet.csv \
