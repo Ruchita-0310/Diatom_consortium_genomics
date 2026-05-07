@@ -220,7 +220,6 @@ singularity build braker3.sif docker://teambraker/braker3:latest
 Genome annotation is significantly improved by providing "evidence" of where genes are actually expressed. We use STAR to perform splice-aware alignment of RNA-seq reads back to the genome. We align pooled RNA-seq triplicates to the genome to provide "evidence" of active gene expression.
 ```
 # 1. Index the Genome
-# Note: Use the 'clean' fasta if headers were sanitized beforehand
 STAR --runThreadN 8 --runMode genomeGenerate --genomeDir ./genome_index --genomeFastaFiles 18_diatom.fasta --genomeSAindexNbases 10
 
 # 2. Run the Alignment
