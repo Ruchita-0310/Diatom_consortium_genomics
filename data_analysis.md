@@ -225,8 +225,8 @@ conda install -c bioconda \
 ```
 GeneMark-ETP was installed separately following license registration.
 ```
-# Copy GeneMark license key
-cp .gm_key ~/.gm_key
+module load ebg_perl/5.32.0 ebg_perl_modules/5.32.0 miniconda3/4.8.3
+module load GeneMark/GeneMark-ES/v4
 ```
 ## 2. Repeat Identification and Genome Masking
 Repetitive elements were identified de novo using RepeatModeler and subsequently soft-masked using RepeatMasker. Soft masking converts repetitive regions to lowercase sequence while preserving nucleotide information, thereby reducing spurious gene predictions during ab initio annotation.
