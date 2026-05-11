@@ -223,19 +223,18 @@ conda install -c bioconda \
     tsebra \
     -y
 ```
-BRAKER4 was executed using a Singularity container to ensure reproducibility and stable dependency management.
+GeneMark-ETP was installed separately following license registration.
 ```
-module load singularity/3.8.1
-# Pull BRAKER container
-singularity build braker3.sif docker://teambraker/braker3:latest
+# Copy GeneMark license key
+cp .gm_key ~/.gm_key
 ```
 ## 2. Repeat Identification and Genome Masking
 Repetitive elements were identified de novo using RepeatModeler and subsequently soft-masked using RepeatMasker. Soft masking converts repetitive regions to lowercase sequence while preserving nucleotide information, thereby reducing spurious gene predictions during ab initio annotation.
 ### 2.1 Repeat Library Construction
 ```
-module load ebg_perl/5.32.0 ebg_perl_modules/5.32.0 recon/1.08 miniconda3/h5py repeatmasker/4.1.1 miniconda3/4.8.3 repeatscout/1.0.6
-    rmblast/2.10.0 trf/4.09
-module load repeatmodeler/2.0.1 
+module load ebg_perl/5.32.0 ebg_perl_modules/5.32.0 recon/1.08 miniconda3/h5py repeatmasker/4.1.1 miniconda3/4.8.3 repeatscout/1.0.6 rmblast/2.10.0 trf/4.09
+module load repeatmodeler/2.0.1
+
 BuildDatabase \
     -name genomeDB \
     18_diatom.fasta
@@ -334,14 +333,15 @@ stringtie \
     Diatoms_Combined_Aligned.sortedByCoord.out.bam \
     -o stringtie_preds.gtf
 ```
-Ab initio predictions were generated using AUGUSTUS with Phaeodactylum tricornutum as the closest available training species.
+### 6.2 Ab Initio Prediction
+Additional ab initio predictions were generated using AUGUSTUS with Phaeodactylum tricornutum as the closest available reference species.
 ```
 augustus \
     --species=phaeodactylum_tricornutum \
     18_diatom.fasta.masked \
     > augustus_preds.gtf
 ```
-### 6.2 Standardization of GTF Files
+### 6.3 Standardization of GTF Files
 ```
 fix_gtf_ids.py \
     --gtf stringtie_preds.gtf \
@@ -351,7 +351,7 @@ fix_gtf_ids.py \
     --gtf augustus_preds.gtf \
     --out set2.gtf
 ```
-### 6.3 TSEBRA Integration
+### 6.4 TSEBRA Integration
 TSEBRA was used to select optimal gene models based on transcriptomic support.
 ```
 tsebra \
@@ -360,7 +360,7 @@ tsebra \
     -c default.cfg \
     -o final_diatom_annotation.gtf
 ```
-### 6.4 Final Annotation Formatting
+### 6.5 Final Annotation Formatting
 ```
 rename_gtf.py \
     --gtf final_diatom_annotation.gtf \
