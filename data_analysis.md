@@ -204,84 +204,167 @@ metaquast.py 8_diatom.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ 
 metaquast.py /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ -o ./whole_metaquast_output
 ```
 # 12. Diatom Genome Annotation Pipeline
-## 1. Environment & Software Requirements
+## 1. Software Environment and Dependencies
+Structural genome annotation was performed using the BRAKER4 framework, which integrates RNA-seq evidence with ab initio gene prediction. Transcript-supported refinement of gene models was performed using TSEBRA. Repeat identification and masking were conducted prior to annotation to minimize false-positive gene predictions arising from repetitive genomic regions.
 ```
-# 1. Modular Environment (STAR, TSEBRA, Samtools)
-conda create -n tsebra_env python=3.9 -y
-conda activate tsebra_env
-conda install -c bioconda tsebra star augustus stringtie samtools -y
-
-# 2. BRAKER4 Container
-# Build the BRAKER3 container (the stable engine for BRAKER4)
+# Create conda environment
+conda create -n braker_env python=3.9 -y
+conda activate braker_env
+```
+```
+# Install required tools
+conda install -c bioconda \
+    repeatmodeler \
+    repeatmasker \
+    star \
+    samtools \
+    stringtie \
+    augustus \
+    tsebra \
+    -y
+```
+BRAKER4 was executed using a Singularity container to ensure reproducibility and stable dependency management.
+```
 module load singularity/3.8.1
+# Pull BRAKER container
 singularity build braker3.sif docker://teambraker/braker3:latest
 ```
-## 2. Transcriptomic Evidence Mapping - STAR 
-Genome annotation is significantly improved by providing "evidence" of where genes are actually expressed. We use STAR to perform splice-aware alignment of RNA-seq reads back to the genome. We align pooled RNA-seq triplicates to the genome to provide "evidence" of active gene expression.
+## 2. Repeat Identification and Genome Masking
+Repetitive elements were identified de novo using RepeatModeler and subsequently soft-masked using RepeatMasker. Soft masking converts repetitive regions to lowercase sequence while preserving nucleotide information, thereby reducing spurious gene predictions during ab initio annotation.
+### 2.1 Repeat Library Construction
 ```
-# 1. Index the Genome
-STAR --runThreadN 8 --runMode genomeGenerate --genomeDir ./genome_index --genomeFastaFiles 18_diatom.fasta --genomeSAindexNbases 10
+module load ebg_perl/5.32.0 ebg_perl_modules/5.32.0 recon/1.08 miniconda3/h5py repeatmasker/4.1.1 miniconda3/4.8.3 repeatscout/1.0.6
+    rmblast/2.10.0 trf/4.09
+module load repeatmodeler/2.0.1 
+BuildDatabase \
+    -name genomeDB \
+    18_diatom.fasta
 
-# 2. Run the Alignment
+RepeatModeler \
+    -database genomeDB \
+    -pa 32
+```
+This generated a custom repeat library: ```consensi.fa.classified```
+### 2.2 Soft Masking of the Genome
+```
+RepeatMasker \
+    -pa 32 \
+    -lib consensi.fa.classified \
+    -xsmall \
+    18_diatom.fasta
+```
+The resulting soft-masked genome: ```18_diatom.fasta.masked``` was used for all downstream analyses.
+
+## 3. RNA-seq Alignment to the Soft-Masked Genome
+RNA-seq triplicates were pooled and aligned to the soft-masked genome using the splice-aware aligner STAR. RNA-seq evidence improves prediction of exon–intron boundaries and transcript structures.
+### 3.1 Genome Index Generation
+```
+STAR \
+    --runThreadN 8 \
+    --runMode genomeGenerate \
+    --genomeDir genome_index \
+    --genomeFastaFiles 18_diatom.fasta.masked \
+    --genomeSAindexNbases 10
+```
+
+### 3.2 RNA-seq Alignment
+```
 BASE="/work/ebg_lab/eb/diatom_consortia/metatranscriptomics"
 
-STAR --runThreadN 12 \
-     --genomeDir ./genome_index \
-     --readFilesCommand zcat \
-     --readFilesIn $BASE/Li57991-Diatoms-1-4C_S1_R1_001.fastq.gz,$BASE/Li57992-Diatoms-2-4C_S2_R1_001.fastq.gz,$BASE/Li57993-Diatoms-3-4C_S3_R1_001.fastq.gz \
-     $BASE/Li57991-Diatoms-1-4C_S1_R2_001.fastq.gz,$BASE/Li57992-Diatoms-2-4C_S2_R2_001.fastq.gz,$BASE/Li57993-Diatoms-3-4C_S3_R2_001.fastq.gz \
-     --outSAMtype BAM SortedByCoordinate \
-     --outFileNamePrefix Diatoms_Combined_
+STAR \
+    --runThreadN 12 \
+    --genomeDir genome_index \
+    --readFilesCommand zcat \
+    --readFilesIn \
+        $BASE/Li57991-Diatoms-1-4C_S1_R1_001.fastq.gz,\
+$BASE/Li57992-Diatoms-2-4C_S2_R1_001.fastq.gz,\
+$BASE/Li57993-Diatoms-3-4C_S3_R1_001.fastq.gz \
+        $BASE/Li57991-Diatoms-1-4C_S1_R2_001.fastq.gz,\
+$BASE/Li57992-Diatoms-2-4C_S2_R2_001.fastq.gz,\
+$BASE/Li57993-Diatoms-3-4C_S3_R2_001.fastq.gz \
+    --outSAMtype BAM SortedByCoordinate \
+    --outFileNamePrefix Diatoms_Combined_
 ```
-## 3. Structural Signal Extraction - Hints
-```
-# 1. Sanitize Genome Headers (Regex to keep only the first word)
-# This step is CRITICAL: BAM and Fasta headers MUST match perfectly.
-samtools view -H Diatoms_Combined_Aligned.sortedByCoord.out.bam | sed 's/ .*//' > fixed_header.sam
+The resulting coordinate-sorted BAM file was used as transcriptomic evidence for downstream annotation.
 
-# 2. Intron Hint Generation
-# The 'src=E' tag identifies the data as Extrinsic RNA-seq evidence for TSEBRA logic.
-bam2hints --intronsonly --in=Diatoms_Combined_Aligned.sortedByCoord.out.bam --out=rna_hints.gff
+## 4. Generation of RNA-seq Hints
+Intron hints were extracted from RNA-seq alignments using bam2hints. These hints provide extrinsic splice-site evidence during AUGUSTUS prediction and TSEBRA refinement.
+```
+bam2hints \
+    --intronsonly \
+    --in=Diatoms_Combined_Aligned.sortedByCoord.out.bam \
+    --out=rna_hints.gff
+```
+The RNA-seq evidence tag (src=E) was appended for compatibility with TSEBRA scoring.
+```
 sed -i 's/$/src=E;/' rna_hints.gff
 ```
-## 4. Pipeline Execution - BRAKER4
+## 5. Genome Annotation with BRAKER4
+BRAKER4 was used to generate evidence-supported structural gene predictions from the soft-masked genome and RNA-seq alignments.
+### 5.1 BRAKER4 Setup
 ```
 git clone https://github.com/Gaius-Augustus/BRAKER4.git
 cd BRAKER4
-
-# 1. Prepare samples.csv
-# Format: species,genome,rna_seq,protein
-echo "Diatom_18,/work/ebg_lab/eb/metatranscriptomics/18_diatom_clean.fasta,/work/ebg_lab/eb/metatranscriptomics/Diatoms_Combined_Aligned.sortedByCoord.out.bam," > samples.csv
-
-# Execute using the Singularity image and binding the specific work directory
-snakemake --use-singularity \
+```
+### 5.2 Sample Configuration
+A samples.csv configuration file was prepared specifying the genome assembly and transcriptomic evidence.
+```
+echo "Diatom_18,/work/ebg_lab/eb/metatranscriptomics/18_diatom.fasta.masked,/work/ebg_lab/eb/metatranscriptomics/Diatoms_Combined_Aligned.sortedByCoord.out.bam," > samples.csv
+```
+### 5.3 BRAKER4 Execution
+```
+snakemake \
+    --use-singularity \
     --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index:/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index" \
     --cores 24 \
     --config sif_image=braker3.sif
 ```
-## 5. Manual Refinement - TSEBRA
-For granular control, we generate "hints" and use TSEBRA to merge ab-initio predictions with transcriptomic evidence.
-### 5.1 Generate Hints and Candidates
-```
-# Extract intron hints
-bam2hints --intronsonly --in=Diatoms_Combined_Aligned.sortedByCoord.out.bam --out=rna_hints.gff
-sed -i 's/$/src=E;/' rna_hints.gff
+BRAKER4 internally performs:
+- GeneMark self-training
+- AUGUSTUS-based ab initio prediction
+- Incorporation of RNA-seq splice evidence
+- Evidence-guided transcript selection
 
-# Generate Augustus predictions using Phaeodactylum as a proxy
-augustus --species=phaeodactylum_tricornutum 18_diatom.fasta > augustus_preds.gtf
-
-# Generate StringTie predictions
-stringtie Diatoms_Combined_Aligned.sortedByCoord.out.bam -o stringtie_preds.gtf
+## 6. Transcript-Supported Refinement Using TSEBRA
+To further refine gene models, TSEBRA was used to integrate transcript-supported predictions with ab initio AUGUSTUS predictions.
+### 6.1 Transcript Assembly and Candidate Prediction
+Transcript-supported gene models were generated using StringTie.
 ```
-### 5.2 Final Integration
+stringtie \
+    Diatoms_Combined_Aligned.sortedByCoord.out.bam \
+    -o stringtie_preds.gtf
 ```
-# Standardize formatting
-fix_gtf_ids.py --gtf stringtie_preds.gtf --out set1.gtf
-fix_gtf_ids.py --gtf augustus_preds.gtf --out set2.gtf
-
-# Run TSEBRA merge
-tsebra -g set1.gtf,set2.gtf -e rna_hints.gff -c default.cfg -o final_diatom_annotation.gtf
-
-# Final Cleanup and Prefixing
-rename_gtf.py --gtf final_diatom_annotation.gtf --prefix Diatom_Consortia --out 18_diatom_final.gtf
+Ab initio predictions were generated using AUGUSTUS with Phaeodactylum tricornutum as the closest available training species.
 ```
+augustus \
+    --species=phaeodactylum_tricornutum \
+    18_diatom.fasta.masked \
+    > augustus_preds.gtf
+```
+### 6.2 Standardization of GTF Files
+```
+fix_gtf_ids.py \
+    --gtf stringtie_preds.gtf \
+    --out set1.gtf
+
+fix_gtf_ids.py \
+    --gtf augustus_preds.gtf \
+    --out set2.gtf
+```
+### 6.3 TSEBRA Integration
+TSEBRA was used to select optimal gene models based on transcriptomic support.
+```
+tsebra \
+    -g set1.gtf,set2.gtf \
+    -e rna_hints.gff \
+    -c default.cfg \
+    -o final_diatom_annotation.gtf
+```
+### 6.4 Final Annotation Formatting
+```
+rename_gtf.py \
+    --gtf final_diatom_annotation.gtf \
+    --prefix Diatom_Consortia \
+    --out 18_diatom_final.gtf
+```
+The final output consisted of a transcript-supported structural annotation of the soft-masked diatom genome in GTF format.
