@@ -231,20 +231,34 @@ module load GeneMark/GeneMark-ES/v4
 ## 2. Repeat Identification and Genome Masking
 Repetitive elements were identified de novo using RepeatModeler and subsequently soft-masked using RepeatMasker. Soft masking converts repetitive regions to lowercase sequence while preserving nucleotide information, thereby reducing spurious gene predictions during ab initio annotation.
 ### 2.1 Repeat Library Construction
+You are building a species-specific repeat database from your diatom genome.
 ```
 module load ebg_perl/5.32.0 ebg_perl_modules/5.32.0 recon/1.08 miniconda3/h5py repeatmasker/4.1.1 miniconda3/4.8.3 repeatscout/1.0.6 rmblast/2.10.0 trf/4.09
 module load repeatmodeler/2.0.1
-
+```
+This:
+- converts your FASTA genome into a searchable database
+- creates index files needed by RepeatModeler
+- does not identify repeats yet
+```
 BuildDatabase \
     -name genomeDB \
     18_diatom.fasta
-
+```
+This is the actual repeat discovery step. RepeatModeler scans the genome and tries to find:
+- transposable elements (TEs)
+- tandem repeats
+- low-complexity regions
+- repetitive fragments
+- novel repeats specific to your organism
+```
 RepeatModeler \
     -database genomeDB \
     -pa 32
 ```
 This generated a custom repeat library: ```consensi.fa.classified```
 ### 2.2 Soft Masking of the Genome
+Now you use the repeat library to locate repeats across the genome.
 ```
 RepeatMasker \
     -pa 32 \
