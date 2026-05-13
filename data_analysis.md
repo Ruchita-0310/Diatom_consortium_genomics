@@ -304,8 +304,6 @@ BRAKER4 was used to generate evidence-supported structural gene predictions from
 ```
 git clone https://github.com/Gaius-Augustus/BRAKER4.git
 cd BRAKER4
-# Install snakemake in braker env
-conda install -c conda-forge -c bioconda snakemake
 ```
 ### 5.2 Sample Configuration
 A samples.csv configuration file was prepared specifying the genome assembly and transcriptomic evidence.
@@ -314,6 +312,9 @@ echo "Diatom_18,/work/ebg_lab/eb/metatranscriptomics/18_diatom.fasta.masked,/wor
 ```
 ### 5.3 BRAKER4 Execution
 ```
+# Install snakemake in braker env
+conda install -c conda-forge -c bioconda snakemake
+
 snakemake \
     --use-singularity \
     --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index:/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index" \
