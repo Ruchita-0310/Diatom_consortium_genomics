@@ -204,6 +204,24 @@ metaquast.py 8_diatom.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ 
 metaquast.py /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ -o ./whole_metaquast_output
 ```
 # 12. Diatom Genome Annotation Pipeline
+## Pipeline Logic
+```
+Genome
+   ↓
+Repeat masking
+   ↓
+RNA-seq alignment to genome
+   ↓
+BAM files
+   ↓
+BRAKER4
+   ↓
+Gene predictions
+   ↓
+TSEBRA refinement
+   ↓
+Functional annotation
+```
 ## 1. Software Environment and Dependencies
 Structural genome annotation was performed using the BRAKER4 framework, which integrates RNA-seq evidence with ab initio gene prediction. Transcript-supported refinement of gene models was performed using TSEBRA. Repeat identification and masking were conducted prior to annotation to minimize false-positive gene predictions arising from repetitive genomic regions.
 ```
