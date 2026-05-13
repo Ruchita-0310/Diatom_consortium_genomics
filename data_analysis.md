@@ -363,8 +363,9 @@ echo "Diatom_18,/work/ebg_lab/eb/metatranscriptomics/18_diatom.fasta.masked,/wor
 conda install -c conda-forge -c bioconda snakemake
 
 snakemake \
+    -s Snakefile \
     --use-singularity \
-    --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index:/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index" \
+    --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics" \
     --cores 24 \
     --config sif_image=braker3.sif
 ```
