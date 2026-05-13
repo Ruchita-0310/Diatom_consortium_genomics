@@ -288,7 +288,19 @@ The resulting soft-masked genome: ```18_diatom.fasta.masked``` was used for all 
 
 ## 3. RNA-seq Alignment to the Soft-Masked Genome
 RNA-seq triplicates were pooled and aligned to the soft-masked genome using the splice-aware aligner STAR. RNA-seq evidence improves prediction of exon–intron boundaries and transcript structures.
+Why STAR is “splice-aware”
+Eukaryotic genes contain introns.
+RNA-seq reads often span exon junctions:
+```Exon1 ---- intron ---- Exon2```
+A read may align like: ```[Exon1][Exon2]```
+Normal aligners fail because part of the read is missing from genomic sequence continuity.
+STAR detects splice junctions and aligns across introns correctly.
+That is why STAR is ideal for:
+- eukaryotic transcriptomes
+- BRAKER
+- exon prediction
 ### 3.1 Genome Index Generation
+This step prepares the genome for rapid RNA-seq alignment.
 ```
 STAR \
     --runThreadN 8 \
@@ -299,6 +311,7 @@ STAR \
 ```
 
 ### 3.2 RNA-seq Alignment
+Now STAR maps RNA reads back onto the genome.
 ```
 BASE="/work/ebg_lab/eb/diatom_consortia/metatranscriptomics"
 
@@ -316,7 +329,10 @@ $BASE/Li57993-Diatoms-3-4C_S3_R2_001.fastq.gz \
     --outSAMtype BAM SortedByCoordinate \
     --outFileNamePrefix Diatoms_Combined_
 ```
-The resulting coordinate-sorted BAM file was used as transcriptomic evidence for downstream annotation.
+This BAM file contains:
+- where every RNA read aligned
+- splice junctions
+- transcript evidence
 
 ## 4. Generation of RNA-seq Hints
 Intron hints were extracted from RNA-seq alignments using bam2hints. These hints provide extrinsic splice-site evidence during AUGUSTUS prediction and TSEBRA refinement.
