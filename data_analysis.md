@@ -304,6 +304,8 @@ BRAKER4 was used to generate evidence-supported structural gene predictions from
 ```
 git clone https://github.com/Gaius-Augustus/BRAKER4.git
 cd BRAKER4
+# Install snakemake in braker env
+conda install -c conda-forge -c bioconda snakemake
 ```
 ### 5.2 Sample Configuration
 A samples.csv configuration file was prepared specifying the genome assembly and transcriptomic evidence.
