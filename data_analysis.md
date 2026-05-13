@@ -287,8 +287,8 @@ RepeatMasker \
 The resulting soft-masked genome: ```18_diatom.fasta.masked``` was used for all downstream analyses.
 
 ## 3. RNA-seq Alignment to the Soft-Masked Genome
-RNA-seq triplicates were pooled and aligned to the soft-masked genome using the splice-aware aligner STAR. RNA-seq evidence improves prediction of exon–intron boundaries and transcript structures.
-Why STAR is “splice-aware”             
+RNA-seq triplicates were pooled and aligned to the soft-masked genome using the splice-aware aligner STAR. RNA-seq evidence improves prediction of exon–intron boundaries and transcript structures.                          
+Why STAR is “splice-aware”                     
 Eukaryotic genes contain introns.
 RNA-seq reads often span exon junctions: ```Exon1 ---- intron ---- Exon2```               
 A read may align like: ```[Exon1][Exon2]```                   
