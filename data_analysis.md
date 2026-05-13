@@ -350,7 +350,7 @@ BRAKER4 was used to generate evidence-supported structural gene predictions from
 ### 5.1 BRAKER4 Setup
 ```
 git clone https://github.com/Gaius-Augustus/BRAKER4.git
-cd BRAKER4
+singularity pull braker3.sif docker://teambraker/braker3:latest
 ```
 ### 5.2 Sample Configuration
 A samples.csv configuration file was prepared specifying the genome assembly and transcriptomic evidence.
@@ -361,7 +361,39 @@ echo "Diatom_18,/work/ebg_lab/eb/metatranscriptomics/18_diatom.fasta.masked,/wor
 ```
 # Install snakemake in braker env
 conda install -c conda-forge -c bioconda snakemake
+```
+### 5.3.1. Create the Snakefile
+```
+nano Snakefile
+# Minimal Snakefile for BRAKER3
+configfile: "config.yaml"
 
+rule all:
+    input:
+        "braker_results/braker.gtf"
+
+rule run_braker3:
+    input:
+        genome = "genome_index/18_diatom.fasta",
+        bam = "genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam"
+    output:
+        "braker_results/braker.gtf"
+    threads: 24
+    container: config["sif_image"]
+    shell:
+        """
+        braker.pl --genome={input.genome} \
+                  --bam={input.bam} \
+                  --threads={threads} \
+                  --workingdir=braker_results
+        """
+```
+### 5.3.2. Create a Config file
+Run ```nano config.yaml``` and add the link to your image:
+```
+sif_image: "braker3.sif"
+```
+```
 snakemake \
     -s Snakefile \
     --use-singularity \
