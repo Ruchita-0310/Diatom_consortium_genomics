@@ -106,73 +106,10 @@ coverm genome \
 ```
 # 8. Phylogenetic tree
 ```
+cat *.fasta > 18S_new.fasta
 clustalo -i 18S_new.fasta -o 18S_aligned.fasta
 trimal -in 18S_aligned.fasta -out 18S_trimmed.fasta -automated1
 /home/ruchita.solanki/iqtree-2.2.2.7-Linux/bin/iqtree2 -s 18S_trimmed.fasta -B 1000 -T 4
-```
-Once you have the tree file, run this to get names next to the accession IDs
-```
-python3 -c '
-import re
-import glob
-
-# Using your specific tree filename
-tree_filename = "18S_trimmed.fasta.treefile"
-name_map = {}
-
-# 1. Loop through all .fasta files (seqdump, Nitzschia_18S_full, and individual IDs)
-fasta_files = glob.glob("*.fasta")
-print(f"Reading names from: {len(fasta_files)} files...")
-
-for fasta in fasta_files:
-    with open(fasta) as f:
-        for line in f:
-            if line.startswith(">"):
-                parts = line.strip().split()
-                acc = parts[0].replace(">", "")
-                if len(parts) >= 3:
-                    # Extracts Genus_species and cleans special characters
-                    species = re.sub(r"[^a-zA-Z0-9_]", "", f"{parts[1]}_{parts[2]}")
-                    name_map[acc] = f"{acc}_{species}"
-
-# 2. Perform the swap on the tree
-try:
-    with open(tree_filename, "r") as t:
-        content = t.read()
-    
-    # Sort keys by length (longest first) to prevent partial matching bugs
-    for acc in sorted(name_map.keys(), key=len, reverse=True):
-        content = content.replace(acc, name_map[acc])
-    
-    output_name = "final_species_tree.tre"
-    with open(output_name, "w") as out:
-        out.write(content)
-    
-    print(f"\nDone! Mapped {len(name_map)} unique IDs.")
-    print(f"Your fixed tree is: {output_name}")
-
-except FileNotFoundError:
-    print(f"\nError: Could not find {tree_filename}")
-'
-```
-You can next remove all the "Uncultured", to clean up the tree:
-```
-from Bio import Phylo
-
-# Load the tree
-tree = Phylo.read("new18_species_tree.tre", "newick")
-
-# Identify all terminals (leaves) containing "Uncultured"
-to_prune = [leaf for leaf in tree.get_terminals() if "Uncultured" in leaf.name]
-
-# Remove them
-for leaf in to_prune:
-    tree.prune(leaf)
-
-# Save the cleaned tree
-Phylo.write(tree, "cleaned_species_tree.tre", "newick")
-
-print(f"Removed {len(to_prune)} nodes.")
 ```
 # 9. Transcriptome analysis 
 [Nf core metadenovo](https://github.com/nf-core/metatdenovo)
