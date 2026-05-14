@@ -364,32 +364,15 @@ stringtie \
     Diatoms_Combined_Aligned.sortedByCoord.out.bam \
     -o stringtie_preds.gtf
 ```
-### 6.2 Ab Initio Prediction
-Additional ab initio predictions were generated using AUGUSTUS with Phaeodactylum tricornutum as the closest available reference species.
-```
-augustus \
-    --species=phaeodactylum_tricornutum \
-    18_diatom.fasta.masked \
-    > augustus_preds.gtf
-```
-### 6.3 Standardization of GTF Files
-```
-fix_gtf_ids.py \
-    --gtf stringtie_preds.gtf \
-    --out set1.gtf
-
-fix_gtf_ids.py \
-    --gtf augustus_preds.gtf \
-    --out set2.gtf
-```
-### 6.4 TSEBRA Integration
+### 6.2 TSEBRA Integration
 TSEBRA was used to select optimal gene models based on transcriptomic support.
 ```
-tsebra \
-    -g set1.gtf,set2.gtf \
-    -e rna_hints.gff \
-    -c default.cfg \
-    -o final_diatom_annotation.gtf
+cp /home/ruchita.solanki/miniforge3/envs/braker_env/config/default.cfg ./diatom_tsebra.cfg
+tsebra.py -g braker.gtf,stringtie_preds.gtf \
+          -e hintsfile.gff.gz \
+          -c diatom_tsebra.cfg \
+          --filter_single_exon_genes \
+          -o diatom_final_consensus.gtf
 ```
 ### 6.5 Final Annotation Formatting
 ```
