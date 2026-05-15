@@ -384,7 +384,7 @@ snakemake \
     --rerun-incomplete \
     --printshellcmds
 ```
-## 5.5 BRAKER4 Annotation Workflow
+### 5.5 BRAKER4 Annotation Workflow
 Within the BRAKER4 workflow:
 - RNA-seq BAM files were validated, sorted, and indexed
 - Transcript models were assembled using StringTie
