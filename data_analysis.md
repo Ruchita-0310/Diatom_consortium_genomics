@@ -67,9 +67,6 @@ conda create -n metabat2_v2 -c conda-forge -c bioconda metabat2 libdeflate=1.10
 minimap2 -ax map-ont -t 16 1_sr_pypolca_output/pypolca_corrected.fasta pass_trim.fastq.gz | \
 samtools view -@ 16 -bS - | \
 samtools sort -@ 16 -m 10G -o aligned_reads.sorted.bam
-
-samtools index -@ 16 aligned_reads.sorted.bam
-
 samtools index -@ 16 aligned_reads.sorted.bam
 
 # Summarize Depth
