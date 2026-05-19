@@ -106,7 +106,7 @@ coverm genome \
 cat *.fasta > 18S_new.fasta
 clustalo -i 18S_new.fasta -o 18S_aligned.fasta
 trimal -in 18S_aligned.fasta -out 18S_trimmed.fasta -automated1
-/home/ruchita.solanki/iqtree-2.2.2.7-Linux/bin/iqtree2 -s 8S_trimmed.fasta -m MFP -bb 1000 -alrt 1000 -nt AUTO
+/home/ruchita.solanki/iqtree-2.2.2.7-Linux/bin/iqtree2 -s 18S_trimmed.fasta -m MFP -bb 1000 -alrt 1000 -nt AUTO
 ```
 # 9. Transcriptome analysis 
 [Nf core metadenovo](https://github.com/nf-core/metatdenovo)
