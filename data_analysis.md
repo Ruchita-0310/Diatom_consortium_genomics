@@ -1,12 +1,12 @@
 # Diatom Consortia: Metagenomic & Metatranscriptomic Pipeline
 This repository contains the end-to-end workflow for the assembly, polishing, binning, and annotation of Diatom-associated microbial consortia.                            
 🛠 Prerequisites & Environment
-The following software environments are required. It is recommended to manage these via Conda/Mamba or Singularity as noted:
+The following software environments are required. It is recommended to manage these via Conda or Singularity as noted:
 1. Assembly/Polishing: Flye, Medaka, Polypolish, Pypolca
 2. Quality & Validation: BUSCO, CheckM2, QUAST/MetaQUAST
 3. Binning & Taxonomy: MetaBAT2, GTDB-Tk, CoverM
 4. Phylogenetics: ClustalO, TrimAl, IQ-TREE 2, Biopython
-5. Annotation: RepeatModeler2, RepeatMasker, STAR, BRAKER4, TSEBRA, Augustus, StringTie
+5. Annotation: RepeatModeler2, RepeatMasker, STAR, BRAKER4, TSEBRA, StringTie
 6. Metatranscriptomics: Nextflow, nf-core/metatdenovo
 
 # 1. Assembly
