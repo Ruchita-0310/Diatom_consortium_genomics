@@ -318,9 +318,9 @@ export GENEMARK_KEY=/home/ruchita.solanki/.gm_key
 ### 5.2 Input Preparation
 #### 5.2.1 Genome, RNA-seq, and Protein Evidence
 The following inputs were used:
-Soft-masked genome assembly: 18_diatom.fasta.masked (linked as data/genome.fa)
-RNA-seq evidence: Coordinate-sorted STAR alignment BAM derived from pooled Illumina libraries: Diatoms_Combined_Aligned.sortedByCoord.out.bam
-Protein evidence: A curated multi-species diatom and stramenopile UniProt FASTA dataset (data/proteins.fa) containing homologous proteins from multiple Bacillariophyta and related taxa. This dataset was used to enable protein-guided gene structure refinement under ETP mode.
+Soft-masked genome assembly: 18_diatom.fasta.masked (linked as ```data/genome.fa```)
+RNA-seq evidence: Coordinate-sorted STAR alignment BAM derived from pooled Illumina libraries: ```Diatoms_Combined_Aligned.sortedByCoord.out.bam```
+Protein evidence: A curated multi-species diatom and stramenopile UniProt FASTA dataset (```data/proteins.fa```) containing homologous proteins from multiple Bacillariophyta and related taxa. This dataset was used to enable protein-guided gene structure refinement under ETP mode.
 ```
 wget -O diatoms.faa \
 "https://rest.uniprot.org/uniprotkb/stream?format=fasta&query=taxonomy_id:2836"
