@@ -195,7 +195,7 @@ RepeatModeler performed unsupervised discovery of:
 - transposable elements (LINEs, SINEs, LTRs)
 - tandem repeats
 - low-complexity genomic regions
-- lineage-specific repetitive elements
+- lineage-specific repetitive elements                       
 The output ```consensi.fa.classified``` served as the repeat library.
 ### 2.2 Genome soft masking
 RepeatMasker was applied using the custom library:
@@ -255,13 +255,13 @@ The resulting dataset contained homologous proteins from:
 - Seminavis
 - Ditylum
 - Grammatophora
-- additional stramenopile lineages
+- additional stramenopile lineages                                 
 This dataset provided phylogenetically distributed protein homology signals rather than a single-reference proteome, improving sensitivity across divergent gene families.
 ## 5. Genome annotation with BRAKER4 (ETP mode)
 BRAKER4 was executed in ETP mode, integrating:
 - RNA-seq splice junction evidence
 - protein homology alignments
-- ab initio gene prediction (GeneMark-ETP + AUGUSTUS)
+- ab initio gene prediction (GeneMark-ETP + AUGUSTUS)                              
 GeneMark-ETP used RNA-derived intron hints and protein-to-genome alignments to train gene models in regions lacking strong transcript coverage.
 ### 5.1 Input standardization
 All inputs were standardized via symbolic links:
