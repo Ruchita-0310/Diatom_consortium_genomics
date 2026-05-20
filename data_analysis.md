@@ -272,8 +272,10 @@ data/proteins.fa → curated UniProt-derived dataset
 ```
 ### 5.2 Execution
 ```
-snakemake --use-singularity \
-  --singularity-args "-B /home:/home -B /work:/work" \
+snakemake --unlock
+snakemake \
+  --use-singularity \
+  --singularity-args "-B /home/ruchita.solanki:/home/ruchita.solanki -B /work/ebg_lab/eb/diatom_consortia/metatranscriptomics:/work/ebg_lab/eb/diatom_consortia/metatranscriptomics" \
   --cores 32 \
   --latency-wait 60 \
   --rerun-incomplete \
