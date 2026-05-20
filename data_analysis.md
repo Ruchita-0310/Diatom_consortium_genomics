@@ -295,83 +295,94 @@ sed -i 's/$/src=E;/' rna_hints.gff
 ```
 
 ## 5. Genome Annotation with BRAKER4
-Structural gene annotation of the soft-masked diatom genome assembly was performed using the BRAKER4 GitHub repository workflow. RNA-seq alignments were incorporated as transcript evidence to support automated training and gene prediction.            
-The genome assembly was soft-masked prior to annotation using repeat annotations generated during repeat identification and masking steps described earlier in the workflow.
+Structural gene annotation of the soft-masked diatom genome assembly was performed using the BRAKER4 workflow (Gaius-Augustus/BRAKER4). Gene prediction was based on a combination of RNA-seq splice evidence and cross-species protein homology under an evidence-guided training framework. The genome assembly was soft-masked prior to annotation using repeat annotations generated from RepeatModeler and RepeatMasker, as described in Section 2. Masking reduced spurious ab initio gene predictions in repetitive regions while preserving nucleotide-level information required for downstream evidence mapping.
 ### 5.1 Installation and Environment Setup
-BRAKER4 was cloned from GitHub and executed within a Singularity container to ensure reproducibility and dependency isolation.
-#### 5.1.1 Clone BRAKER4 and Pull the Container
+BRAKER4 was executed within a Singularity container to ensure reproducibility and dependency isolation.
+#### 5.1.1 Clone BRAKER4 and Pull Container
 ```
 git clone https://github.com/Gaius-Augustus/BRAKER4.git
 singularity pull braker3.sif docker://teambraker/braker3:latest
 ```
 #### 5.1.2 Conda Environment and Snakemake Installation
-A dedicated conda environment was used for workflow execution.
+A dedicated conda environment was used for workflow execution:
 ```
 source ~/miniforge3/etc/profile.d/conda.sh
 conda create -n braker_env -c conda-forge -c bioconda snakemake
 conda activate braker_env
 ```
-#### 5.1.3 GeneMark License Configuration
-BRAKER4 requires a valid GeneMark license key accessible during runtime.
+5.1.3 GeneMark License Configuration
+GeneMark-ETP requires a valid license key:
 ```
 export GENEMARK_KEY=/home/ruchita.solanki/.gm_key
 ```
 ### 5.2 Input Preparation
-#### 5.2.1 Genome and RNA-seq Evidence
-The following files were used as annotation inputs:
+#### 5.2.1 Genome, RNA-seq, and Protein Evidence
+The following inputs were used:
+Soft-masked genome assembly: 18_diatom.fasta.masked (linked as data/genome.fa)
+RNA-seq evidence: Coordinate-sorted STAR alignment BAM derived from pooled Illumina libraries: Diatoms_Combined_Aligned.sortedByCoord.out.bam
+Protein evidence: A curated multi-species diatom and stramenopile UniProt FASTA dataset (data/proteins.fa) containing homologous proteins from multiple Bacillariophyta and related taxa. This dataset was used to enable protein-guided gene structure refinement under ETP mode.
 ```
-Soft-masked genome assembly
-18_diatom.fasta.masked
-Coordinate-sorted RNA-seq alignment BAM
-Diatoms_Combined_Aligned.sortedByCoord.out.bam
+wget -O diatoms.faa \
+"https://rest.uniprot.org/uniprotkb/stream?format=fasta&query=taxonomy_id:2836"
+
+seqkit seq -m 50 diatoms.faa > diatoms.clean.faa
+seqkit rmdup -s diatoms.clean.faa > diatoms.nr.faa
 ```
-A data/ directory was created within the BRAKER4 workflow, and symbolic links to the required inputs were generated.
+A data/ directory was created within the BRAKER workflow, and symbolic links were used for standardized input handling:
 ```
 cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4
 mkdir -p data
+
 ln -s /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta.masked data/genome.fa
 ln -s /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam data/rnaseq1.bam
-ln -s /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam.bai data/rnaseq1.bam.bai
+ln -s /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/data/diatoms_etp.clean.faa data/proteins.fa
 ```
 #### 5.2.2 RNA-seq BAM Validation
-The RNA-seq BAM file was verified to be coordinate sorted and indexed prior to annotation.
+The RNA-seq BAM file was confirmed to be coordinate-sorted prior to annotation:
 ```
-samtools view -H Diatoms_Combined_Aligned.sortedByCoord.out.bam | grep SO
-samtools index Diatoms_Combined_Aligned.sortedByCoord.out.bam
+samtools view -H data/rnaseq1.bam | grep SO
 ```
+Expected: SO:coordinate
+This ensures compatibility with GeneMark-ETP intron inference and BRAKER splice hint generation.
+#### 5.2.3 Protein Evidence for ETP Mode
+Protein evidence was derived from a curated diatom-stramenopile FASTA dataset. The dataset includes homologous proteins from multiple genera (e.g., Pseudo-nitzschia, Nitzschia, Seminavis, Ditylum, Grammatophora), providing phylogenetically informed support for gene boundary refinement. Protein evidence is used exclusively to guide gene model training and does not impose hard constraints on predicted gene structures.
+#### 5.2.4 Input Constraint (Single BAM Requirement)
+Due to Snakemake rule-level input validation in the BRAKER4 workflow, RNA-seq BAM inputs must be provided as a single coordinate-sorted file per sample. Initial attempts to supply multiple BAMs as semicolon-separated entries resulted in Snakemake parsing failures during BAM validation steps (check_bam_sorted). Therefore, RNA-seq evidence was consolidated into a single pooled BAM alignment for consistent execution.
 ### 5.3 BRAKER4 Configuration
+BRAKER4 was executed in ETP mode, enabling integrated use of:
+- RNA-seq splice evidence
+- protein homology evidence
+- ab initio gene prediction (GeneMark-ETP + AUGUSTUS)
 #### 5.3.1 samples.csv
-The BRAKER4 workflow was configured using a samples.csv file specifying genome and RNA-seq evidence inputs.
 ```
 sample_name,genome,genome_masked,protein_fasta,bam_files,fastq_r1,fastq_r2,sra_ids,varus_genus,varus_species,isoseq_bam,isoseq_fastq,busco_lineage
-example_species,data/genome.fa,,,data/rnaseq1.bam,,,,,,,,eukaryota_odb12
+example_species,data/genome.fa,,data/proteins.fa,data/rnaseq1.bam,,,,,,,,eukaryota_odb12
 ```
 #### 5.3.2 config.ini
-Runtime parameters and workflow settings were defined in config.ini.
 ```
 [paths]
 braker_container = /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/braker3.sif
 genemark_key = /home/ruchita.solanki/.gm_key
+
+[DATA]
+samples = samples.csv
 
 [PARAMS]
 fungus = False
 min_contig = 1000
 run_red = False
 species = diatom_v1
-mode = et
+mode = etp
 
 [SLURM_ARGS]
 cpus_per_task = 32
 mem_of_node = 350
 max_runtime = 120
 ```
-#### 5.3.3 Annotation Mode
-BRAKER4 was executed in ET mode because transcriptomic evidence was available, whereas external protein homology evidence was not incorporated into the present workflow.
-### 5.4 Running BRAKER4
-The workflow was executed using Snakemake with Singularity container support.
+#### 5.3.3 Annotation Mode Justification
+ETP mode was selected because both RNA-seq and protein homology evidence were available. This allows GeneMark-ETP to integrate splice junction evidence with cross-species protein alignments, improving exon boundary resolution relative to ET-only workflows.
+### 5.4 BRAKER4 Execution
 ```
-cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4
-
 snakemake \
     --use-singularity \
     --singularity-args "-B /home/ruchita.solanki:/home/ruchita.solanki \
@@ -381,42 +392,16 @@ snakemake \
     --rerun-incomplete \
     --printshellcmds
 ```
-### 5.5 BRAKER4 Annotation Workflow
-Within the BRAKER4 workflow:
-- RNA-seq BAM files were validated, sorted, and indexed
-- Transcript models were assembled using StringTie
-- GeneMark-ET performed self-training using transcript-derived splice evidence
-- AUGUSTUS generated ab initio gene predictions guided by transcript evidence
-- Final structural annotations were integrated and exported in GTF and GFF3 formats
-Final annotation files were generated within ```output/example_species/results/``` including evidence-supported structural gene models for downstream functional annotation and comparative analyses.
-
-## 6. Transcript-Supported Refinement Using TSEBRA
-To further refine gene models, TSEBRA was used to integrate transcript-supported predictions with ab initio AUGUSTUS predictions.
-### 6.1 Transcript Assembly and Candidate Prediction
-Transcript-supported gene models were generated using StringTie.
+5.5 BRAKER4 Annotation Workflow
+Within BRAKER4:
+- RNA-seq BAM was validated and used to generate splice hints
+- GeneMark-ETP performed evidence-guided training using RNA-seq and protein homology data
+- AUGUSTUS generated ab initio gene predictions informed by trained parameters
+- Final gene models were exported in GTF and GFF3 formats
+Final annotation outputs were generated in: ```output/example_species/results/```
+## 6. Post-processing and Sequence Extraction
+Protein and CDS sequences were extracted from the final gene models:
 ```
-stringtie \
-    Diatoms_Combined_Aligned.sortedByCoord.out.bam \
-    -o stringtie_preds.gtf
+gffread -y diatom_proteins.faa -x diatom_cds.fna -g genome.fa braker.gtf
 ```
-### 6.2 TSEBRA Integration
-TSEBRA was used to select optimal gene models based on transcriptomic support.
-```
-gunzip -c braker_results/braker.gtf.gz > braker.gtf
-gunzip -c braker_results/hintsfile.gff.gz > hintsfile.gff
-
-# Stage config and run refinement
-cp /home/ruchita.solanki/miniforge3/envs/braker_env/config/default.cfg ./diatom_tsebra.cfg
-
-tsebra.py -g braker.gtf,stringtie_preds.gtf \
-          -e hintsfile.gff \
-          -c diatom_tsebra.cfg \
-          --filter_single_exon_genes \
-          -o diatom_final_consensus.gtf
-```
-### 6.3 Extract Sequences (Protein & CDS)
-```
-conda install -c bioconda gffread
-gffread -y diatom_proteins.faa -x diatom_cds.fna -g genome.fa diatom_final_consensus.gtf
-```
-```diatom_proteins.faa```: This is your primary file for the next steps.
+The resulting protein FASTA (```diatom_proteins.faa```) represents the final gene set used for downstream functional annotation and BUSCO evaluation.
