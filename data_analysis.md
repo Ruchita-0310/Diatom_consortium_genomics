@@ -148,260 +148,169 @@ conda create -n quast_env quast
 metaquast.py 8_diatom.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ -o ./8_metaquast_output
 metaquast.py /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ -o ./whole_metaquast_output
 ```
-# 12. Diatom Genome Annotation Pipeline
-## Pipeline Logic
+# 12. Diatom genome annotation pipeline
+Pipeline overview: 
+Gene models were generated using a repeat-masked genome, RNA-seq alignments, and protein homology evidence within the BRAKER4 framework (ETP mode). Transcript-supported refinement was optionally performed using TSEBRA.
 ```
-Genome
+Genome (soft-masked)
    ↓
-Repeat masking
+Repeat annotation (RepeatModeler2 + RepeatMasker)
    ↓
-RNA-seq alignment to genome
+RNA-seq alignment (STAR → coordinate BAM)
    ↓
-BAM files
+Protein evidence (UniProt Bacillariophyta + Stramenopiles)
    ↓
-BRAKER4
+BRAKER4 (GeneMark-ETP + AUGUSTUS)
    ↓
-Gene predictions
+Gene models (GTF/GFF3)
    ↓
-TSEBRA refinement
+TSEBRA (optional refinement with StringTie)
    ↓
-Functional annotation
+CDS + protein extraction (gffread)
 ```
-## 1. Software Environment and Dependencies
-Structural genome annotation was performed using the BRAKER4 framework, which integrates RNA-seq evidence with ab initio gene prediction. Transcript-supported refinement of gene models was performed using TSEBRA. Repeat identification and masking were conducted prior to annotation to minimize false-positive gene predictions arising from repetitive genomic regions.
+## 1. Software environment and dependencies
+Genome annotation was performed using BRAKER4, which integrates RNA-seq evidence and protein homology for gene prediction. Repeat masking was applied prior to annotation to reduce spurious gene calls in repetitive regions.
+A conda environment was used to manage dependencies:
 ```
-# Create conda environment
 conda create -n braker_env python=3.9 -y
 conda activate braker_env
-```
-```
-# Install required tools
+
 conda install -c bioconda \
-    repeatmodeler \
-    repeatmasker \
-    star \
-    samtools \
-    stringtie \
-    augustus \
-    tsebra \
-    -y
+    repeatmodeler repeatmasker star samtools stringtie augustus tsebra -y
 ```
-GeneMark-ETP was installed separately following license registration.
+GeneMark-ETP was installed separately due to licensing constraints and configured via environment variable:
 ```
-module load ebg_perl/5.32.0 ebg_perl_modules/5.32.0 miniconda3/4.8.3
-module load GeneMark/GeneMark-ES/v4
+export GENEMARK_KEY=/home/ruchita.solanki/.gm_key
 ```
-## 2. Repeat Identification and Genome Masking
-Repetitive elements were identified de novo using RepeatModeler and subsequently soft-masked using RepeatMasker. Soft masking converts repetitive regions to lowercase sequence while preserving nucleotide information, thereby reducing spurious gene predictions during ab initio annotation.
-### 2.1 Repeat Library Construction
-You are building a species-specific repeat database from your diatom genome.
+## 2. Repeat identification and genome masking
+Repetitive elements were identified de novo and masked prior to gene prediction to reduce false-positive gene models arising from transposable elements and low-complexity regions.
+### 2.1 Repeat library construction
+A species-specific repeat library was generated:
 ```
-module load ebg_perl/5.32.0 ebg_perl_modules/5.32.0 recon/1.08 miniconda3/h5py repeatmasker/4.1.1 miniconda3/4.8.3 repeatscout/1.0.6 rmblast/2.10.0 trf/4.09
 module load repeatmodeler/2.0.1
+BuildDatabase -name genomeDB 18_diatom.fasta
+RepeatModeler -database genomeDB -pa 32
 ```
-This:
-- converts your FASTA genome into a searchable database
-- creates index files needed by RepeatModeler
-- does not identify repeats yet
-```
-BuildDatabase \
-    -name genomeDB \
-    18_diatom.fasta
-```
-This is the actual repeat discovery step. RepeatModeler scans the genome and tries to find:
-- transposable elements (TEs)
+RepeatModeler performed unsupervised discovery of:
+- transposable elements (LINEs, SINEs, LTRs)
 - tandem repeats
-- low-complexity regions
-- repetitive fragments
-- novel repeats specific to your organism
+- low-complexity genomic regions
+- lineage-specific repetitive elements
+The output ```consensi.fa.classified``` served as the repeat library.
+### 2.2 Genome soft masking
+RepeatMasker was applied using the custom library:
 ```
-RepeatModeler \
-    -database genomeDB \
-    -pa 32
-```
-This generated a custom repeat library: ```consensi.fa.classified```
-### 2.2 Soft Masking of the Genome
-Now you use the repeat library to locate repeats across the genome.
-```
-RepeatMasker \
-    -pa 32 \
+RepeatMasker -pa 32 \
     -lib consensi.fa.classified \
     -xsmall \
     18_diatom.fasta
 ```
-The resulting soft-masked genome: ```18_diatom.fasta.masked``` was used for all downstream analyses.
-
-## 3. RNA-seq Alignment to the Soft-Masked Genome
-RNA-seq triplicates were pooled and aligned to the soft-masked genome using the splice-aware aligner STAR. RNA-seq evidence improves prediction of exon–intron boundaries and transcript structures.                          
-Why STAR is “splice-aware”                     
-Eukaryotic genes contain introns.
-RNA-seq reads often span exon junctions: ```Exon1 ---- intron ---- Exon2```               
-A read may align like: ```[Exon1][Exon2]```                   
-Normal aligners fail because part of the read is missing from genomic sequence continuity.                    
-STAR detects splice junctions and aligns across introns correctly.                  
-That is why STAR is ideal for:
-- eukaryotic transcriptomes
-- BRAKER
-- exon prediction
-### 3.1 Genome Index Generation
-This step prepares the genome for rapid RNA-seq alignment.
+The resulting genome ```18_diatom.fasta.masked``` retained nucleotide sequence while masking repeats in lowercase. This masked assembly was used for all downstream steps.
+## 3. RNA-seq alignment and evidence generation
+RNA-seq reads from multiple biological replicates were pooled prior to alignment.
+### 3.1 STAR genome indexing
 ```
-STAR \
-    --runThreadN 8 \
-    --runMode genomeGenerate \
-    --genomeDir genome_index \
-    --genomeFastaFiles 18_diatom.fasta.masked \
-    --genomeSAindexNbases 10
+STAR --runThreadN 8 \
+     --runMode genomeGenerate \
+     --genomeDir genome_index \
+     --genomeFastaFiles 18_diatom.fasta.masked \
+     --genomeSAindexNbases 10
 ```
-### 3.2 RNA-seq Alignment
-Now STAR maps RNA reads back onto the genome.
+### 3.2 STAR alignment (pooled RNA-seq)
 ```
-BASE="/work/ebg_lab/eb/diatom_consortia/metatranscriptomics"
-
-STAR \
-    --runThreadN 12 \
-    --genomeDir genome_index \
-    --readFilesCommand zcat \
-    --readFilesIn \
-        $BASE/Li57991-Diatoms-1-4C_S1_R1_001.fastq.gz,\
-$BASE/Li57992-Diatoms-2-4C_S2_R1_001.fastq.gz,\
-$BASE/Li57993-Diatoms-3-4C_S3_R1_001.fastq.gz \
-        $BASE/Li57991-Diatoms-1-4C_S1_R2_001.fastq.gz,\
-$BASE/Li57992-Diatoms-2-4C_S2_R2_001.fastq.gz,\
-$BASE/Li57993-Diatoms-3-4C_S3_R2_001.fastq.gz \
-    --outSAMtype BAM SortedByCoordinate \
-    --outFileNamePrefix Diatoms_Combined_
+STAR --runThreadN 12 \
+     --genomeDir genome_index \
+     --readFilesCommand zcat \
+     --readFilesIn R1_rep1.gz,R1_rep2.gz,R1_rep3.gz \
+                    R2_rep1.gz,R2_rep2.gz,R2_rep3.gz \
+     --outSAMtype BAM SortedByCoordinate \
+     --outFileNamePrefix Diatoms_Combined_
 ```
-This BAM file contains:
-- where every RNA read aligned
-- splice junctions
-- transcript evidence
-
-## 4. Generation of RNA-seq Hints
-Intron hints were extracted from RNA-seq alignments using bam2hints. These hints provide extrinsic splice-site evidence during AUGUSTUS prediction and TSEBRA refinement.
-```
-bam2hints \
-    --intronsonly \
-    --in=Diatoms_Combined_Aligned.sortedByCoord.out.bam \
-    --out=rna_hints.gff
-```
-Create BAM index
-```
-samtools index genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam
-```
-The RNA-seq evidence tag (src=E) was appended for compatibility with TSEBRA scoring.
-```
-sed -i 's/$/src=E;/' rna_hints.gff
-```
-
-## 5. Genome Annotation with BRAKER4
-Structural gene annotation of the soft-masked diatom genome assembly was performed using the BRAKER4 workflow (Gaius-Augustus/BRAKER4). Gene prediction was based on a combination of RNA-seq splice evidence and cross-species protein homology under an evidence-guided training framework. The genome assembly was soft-masked prior to annotation using repeat annotations generated from RepeatModeler and RepeatMasker, as described in Section 2. Masking reduced spurious ab initio gene predictions in repetitive regions while preserving nucleotide-level information required for downstream evidence mapping.
-### 5.1 Installation and Environment Setup
-BRAKER4 was executed within a Singularity container to ensure reproducibility and dependency isolation.
-#### 5.1.1 Clone BRAKER4 and Pull Container
-```
-git clone https://github.com/Gaius-Augustus/BRAKER4.git
-singularity pull braker3.sif docker://teambraker/braker3:latest
-```
-#### 5.1.2 Conda Environment and Snakemake Installation
-A dedicated conda environment was used for workflow execution:
-```
-source ~/miniforge3/etc/profile.d/conda.sh
-conda create -n braker_env -c conda-forge -c bioconda snakemake
-conda activate braker_env
-```
-5.1.3 GeneMark License Configuration
-GeneMark-ETP requires a valid license key:
-```
-export GENEMARK_KEY=/home/ruchita.solanki/.gm_key
-```
-### 5.2 Input Preparation
-#### 5.2.1 Genome, RNA-seq, and Protein Evidence
-The following inputs were used:
-Soft-masked genome assembly: 18_diatom.fasta.masked (linked as ```data/genome.fa```)              
-RNA-seq evidence: Coordinate-sorted STAR alignment BAM derived from pooled Illumina libraries: ```Diatoms_Combined_Aligned.sortedByCoord.out.bam```          
-Protein evidence: A curated multi-species diatom and stramenopile UniProt FASTA dataset (```data/proteins.fa```) containing homologous proteins from multiple Bacillariophyta and related taxa. This dataset was used to enable protein-guided gene structure refinement under ETP mode.               
+The resulting BAM file provided:
+- exon–intron junction evidence
+- splice-aware read placement
+- transcript coverage profiles across gene loci
+### 3.3 BAM consolidation constraint
+Although multiple RNA-seq libraries were available, they were merged into a single coordinate-sorted BAM prior to BRAKER execution due to Snakemake input validation constraints in the BRAKER4 workflow (check_bam_sorted rule requires explicit BAM listing per sample without ambiguous multi-file expansion).
+## 4. Protein evidence (ETP input construction)
+Protein evidence was constructed from UniProtKB reference proteomes using a taxonomy-constrained query targeting Bacillariophyta (TaxID: 2836).
 ```
 wget -O diatoms.faa \
 "https://rest.uniprot.org/uniprotkb/stream?format=fasta&query=taxonomy_id:2836"
-
+```
+### 4.1 Protein filtering and curation
+The raw dataset was processed prior to BRAKER input:
+```
 seqkit seq -m 50 diatoms.faa > diatoms.clean.faa
 seqkit rmdup -s diatoms.clean.faa > diatoms.nr.faa
 ```
-A data/ directory was created within the BRAKER workflow, and symbolic links were used for standardized input handling:
-```
-cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4
-mkdir -p data
-
-ln -s /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta.masked data/genome.fa
-ln -s /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam data/rnaseq1.bam
-ln -s /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/data/diatoms_etp.clean.faa data/proteins.fa
-```
-#### 5.2.2 RNA-seq BAM Validation
-The RNA-seq BAM file was confirmed to be coordinate-sorted prior to annotation:
-```
-samtools view -H data/rnaseq1.bam | grep SO
-```
-Expected: SO:coordinate
-This ensures compatibility with GeneMark-ETP intron inference and BRAKER splice hint generation.
-#### 5.2.3 Protein Evidence for ETP Mode
-Protein evidence was derived from a curated diatom-stramenopile FASTA dataset. The dataset includes homologous proteins from multiple genera (e.g., Pseudo-nitzschia, Nitzschia, Seminavis, Ditylum, Grammatophora), providing phylogenetically informed support for gene boundary refinement. Protein evidence is used exclusively to guide gene model training and does not impose hard constraints on predicted gene structures.
-#### 5.2.4 Input Constraint (Single BAM Requirement)
-Due to Snakemake rule-level input validation in the BRAKER4 workflow, RNA-seq BAM inputs must be provided as a single coordinate-sorted file per sample. Initial attempts to supply multiple BAMs as semicolon-separated entries resulted in Snakemake parsing failures during BAM validation steps (check_bam_sorted). Therefore, RNA-seq evidence was consolidated into a single pooled BAM alignment for consistent execution.
-### 5.3 BRAKER4 Configuration
-BRAKER4 was executed in ETP mode, enabling integrated use of:
-- RNA-seq splice evidence
-- protein homology evidence
+This step:
+- removed short sequences (<50 aa)
+- collapsed exact duplicates
+- reduced redundancy in homolog search space
+### 4.2 Composition of protein evidence set
+The resulting dataset contained homologous proteins from:
+- Pseudo-nitzschia
+- Nitzschia
+- Seminavis
+- Ditylum
+- Grammatophora
+- additional stramenopile lineages
+This dataset provided phylogenetically distributed protein homology signals rather than a single-reference proteome, improving sensitivity across divergent gene families.
+## 5. Genome annotation with BRAKER4 (ETP mode)
+BRAKER4 was executed in ETP mode, integrating:
+- RNA-seq splice junction evidence
+- protein homology alignments
 - ab initio gene prediction (GeneMark-ETP + AUGUSTUS)
-#### 5.3.1 samples.csv
+GeneMark-ETP used RNA-derived intron hints and protein-to-genome alignments to train gene models in regions lacking strong transcript coverage.
+### 5.1 Input standardization
+All inputs were standardized via symbolic links:
 ```
-sample_name,genome,genome_masked,protein_fasta,bam_files,fastq_r1,fastq_r2,sra_ids,varus_genus,varus_species,isoseq_bam,isoseq_fastq,busco_lineage
-example_species,data/genome.fa,,data/proteins.fa,data/rnaseq1.bam,,,,,,,,eukaryota_odb12
+data/genome.fa → masked genome
+data/rnaseq1.bam → STAR BAM
+data/proteins.fa → curated UniProt-derived dataset
 ```
-#### 5.3.2 config.ini
+### 5.2 Execution
 ```
-[paths]
-braker_container = /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/braker3.sif
-genemark_key = /home/ruchita.solanki/.gm_key
-
-[DATA]
-samples = samples.csv
-
-[PARAMS]
-fungus = False
-min_contig = 1000
-run_red = False
-species = diatom_v1
-mode = etp
-
-[SLURM_ARGS]
-cpus_per_task = 32
-mem_of_node = 350
-max_runtime = 120
+snakemake --use-singularity \
+  --singularity-args "-B /home:/home -B /work:/work" \
+  --cores 32 \
+  --latency-wait 60 \
+  --rerun-incomplete \
+  --printshellcmds
 ```
-#### 5.3.3 Annotation Mode Justification
-ETP mode was selected because both RNA-seq and protein homology evidence were available. This allows GeneMark-ETP to integrate splice junction evidence with cross-species protein alignments, improving exon boundary resolution relative to ET-only workflows.
-### 5.4 BRAKER4 Execution
+### 5.3 Evidence integration logic
+BRAKER4 combined:
+- RNA-seq splice junctions (high-confidence intron support)
+- protein alignments (cross-species exon boundary support)
+- ab initio predictions (GeneMark-ETP trained parameters)
+Protein evidence was used to improve gene model structure in regions with weak or absent transcript support, particularly for conserved metabolic and housekeeping gene families.
+## 6. Gene model generation
+GeneMark-ETP performed initial training and gene structure inference. AUGUSTUS refined gene models using trained species parameters derived from evidence integration.
+Final outputs:
 ```
-snakemake \
-    --use-singularity \
-    --singularity-args "-B /home/ruchita.solanki:/home/ruchita.solanki \
-    -B /work/ebg_lab/eb/diatom_consortia/metatranscriptomics:/work/ebg_lab/eb/diatom_consortia/metatranscriptomics" \
-    --cores 32 \
-    --latency-wait 60 \
-    --rerun-incomplete \
-    --printshellcmds
+braker.gtf
+braker.gff3
+protein coding sequences
+amino acid translations
 ```
-5.5 BRAKER4 Annotation Workflow
-Within BRAKER4:
-- RNA-seq BAM was validated and used to generate splice hints
-- GeneMark-ETP performed evidence-guided training using RNA-seq and protein homology data
-- AUGUSTUS generated ab initio gene predictions informed by trained parameters
-- Final gene models were exported in GTF and GFF3 formats
-Final annotation outputs were generated in: ```output/example_species/results/```
-## 6. Post-processing and Sequence Extraction
-Protein and CDS sequences were extracted from the final gene models:
+## 7. Optional transcript-supported refinement (TSEBRA)
+Transcript assemblies were generated using StringTie:
 ```
-gffread -y diatom_proteins.faa -x diatom_cds.fna -g genome.fa braker.gtf
+stringtie aligned.bam -o stringtie_preds.gtf
 ```
-The resulting protein FASTA (```diatom_proteins.faa```) represents the final gene set used for downstream functional annotation and BUSCO evaluation.
+TSEBRA was optionally used to integrate BRAKER predictions with transcript assemblies:
+```
+tsebra.py -g braker.gtf,stringtie_preds.gtf \
+          -e hintsfile.gff \
+          -o diatom_final_consensus.gtf
+```
+This step produced a consensus gene set emphasizing transcript-supported models where available.
+## 8. Sequence extraction
+Coding sequences and proteins were extracted using gffread:
+```
+gffread -y diatom_proteins.faa \
+        -x diatom_cds.fna \
+        -g genome.fa diatom_final_consensus.gtf
+```
+The final protein set ```diatom_proteins.faa``` was used for downstream functional annotation and BUSCO assessment.
