@@ -319,5 +319,5 @@ snakemake \
 BRAKER4 internally performs:
 - GeneMark self-training
 - AUGUSTUS-based ab initio prediction
-- Incorporation of RNA-seq splice evidence
+- Incorporation of RNA-seq splice evidence                          
 The final protein set ```diatom_proteins.faa``` was used for downstream functional annotation and BUSCO assessment.
