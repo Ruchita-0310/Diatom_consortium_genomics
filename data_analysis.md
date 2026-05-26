@@ -258,63 +258,66 @@ The resulting dataset contained homologous proteins from:
 - additional stramenopile lineages
 
 This dataset provided phylogenetically distributed protein homology signals rather than a single-reference proteome, improving sensitivity across divergent gene families.
-## 5. Genome annotation with BRAKER4 (ETP mode)
-BRAKER4 was executed in ETP mode, integrating:
-- RNA-seq splice junction evidence
-- protein homology alignments
-- ab initio gene prediction (GeneMark-ETP + AUGUSTUS)                              
+## 5. Genome Annotation with BRAKER4
+BRAKER4 was used to generate evidence-supported structural gene predictions from the soft-masked genome and RNA-seq alignments.
+### 5.1 BRAKER4 Setup
+```
+git clone https://github.com/Gaius-Augustus/BRAKER4.git
+singularity pull braker3.sif docker://teambraker/braker3:latest
+```
+### 5.2 Sample Configuration
+A samples.csv configuration file was prepared specifying the genome assembly and transcriptomic evidence.
+```
+echo "Diatom_18,/work/ebg_lab/eb/metatranscriptomics/18_diatom.fasta.masked,/work/ebg_lab/eb/metatranscriptomics/Diatoms_Combined_Aligned.sortedByCoord.out.bam," > samples.csv
+```
+### 5.3 BRAKER4 Execution
+```
+# Install snakemake in braker env
+conda install -c conda-forge -c bioconda snakemake
+```
+### 5.3.1. Create the Snakefile
+```
+nano Snakefile
+# Minimal Snakefile for BRAKER3
+configfile: "config.yaml"
 
-GeneMark-ETP used RNA-derived intron hints and protein-to-genome alignments to train gene models in regions lacking strong transcript coverage.
-### 5.1 Input standardization
-All inputs were standardized via symbolic links:
+rule all:
+    input:
+        "braker_results/braker.gtf"
+
+rule run_braker3:
+    input:
+        genome = "genome_index/18_diatom.fasta",
+        bam = "genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam"
+    output:
+        "braker_results/braker.gtf"
+    threads: 24
+    container: config["sif_image"]
+    shell:
+        """
+        braker.pl --genome={input.genome} \
+                  --bam={input.bam} \
+                  --threads={threads} \
+                  --workingdir=braker_results
+        """
 ```
-data/genome.fa → masked genome
-data/rnaseq1.bam → STAR BAM
-data/proteins.fa → curated UniProt-derived dataset
+### 5.3.2. Create a Config file
+Run 
+nano config.yaml
+and add the link to your image
 ```
-### 5.2 Execution
-```
-snakemake --unlock
+sif_image: "braker3.sif"
+
+
 snakemake \
-  --use-singularity \
-  --singularity-args "-B /home/ruchita.solanki:/home/ruchita.solanki -B /work/ebg_lab/eb/diatom_consortia/metatranscriptomics:/work/ebg_lab/eb/diatom_consortia/metatranscriptomics" \
-  --cores 32 \
-  --latency-wait 60 \
-  --rerun-incomplete \
-  --printshellcmds
+    -s Snakefile \
+    --use-singularity \
+    --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics" \
+    --cores 24 \
+    --config sif_image=braker3.sif
 ```
-### 5.3 Evidence integration logic
-BRAKER4 combined:
-- RNA-seq splice junctions (high-confidence intron support)
-- protein alignments (cross-species exon boundary support)
-- ab initio predictions (GeneMark-ETP trained parameters)
-Protein evidence was used to improve gene model structure in regions with weak or absent transcript support, particularly for conserved metabolic and housekeeping gene families.
-## 6. Gene model generation
-GeneMark-ETP performed initial training and gene structure inference. AUGUSTUS refined gene models using trained species parameters derived from evidence integration.
-Final outputs:
-```
-braker.gtf
-braker.gff3
-protein coding sequences
-amino acid translations
-```
-## 7. Optional transcript-supported refinement (TSEBRA)
-Transcript assemblies were generated using StringTie:
-```
-stringtie aligned.bam -o stringtie_preds.gtf
-```
-TSEBRA was optionally used to integrate BRAKER predictions with transcript assemblies:
-```
-tsebra.py -g braker.gtf,stringtie_preds.gtf \
-          -e hintsfile.gff \
-          -o diatom_final_consensus.gtf
-```
-This step produced a consensus gene set emphasizing transcript-supported models where available.
-## 8. Sequence extraction
-Coding sequences and proteins were extracted using gffread:
-```
-gffread -y diatom_proteins.faa \
-        -x diatom_cds.fna \
-        -g genome.fa diatom_final_consensus.gtf
-```
+BRAKER4 internally performs:
+- GeneMark self-training
+- AUGUSTUS-based ab initio prediction
+- Incorporation of RNA-seq splice evidence
 The final protein set ```diatom_proteins.faa``` was used for downstream functional annotation and BUSCO assessment.
