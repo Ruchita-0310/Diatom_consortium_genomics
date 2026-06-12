@@ -303,14 +303,15 @@ The MetaQUAST output was used to identify candidate chloroplast and mitochondria
 
 ---
 # 12. Diatom Genome Annotation with BRAKER4
-Gene models were generated using BRAKER4 with the genome assembly, RNA-seq alignments, and protein homology evidence. The genome assembly was not soft-masked prior to annotation; therefore, repeat masking was performed internally by BRAKER4 using RED. RNA-seq and protein evidence were supplied through `samples.csv`, which triggered BRAKER4 ETP mode using GeneMark-ETP, AUGUSTUS, and TSEBRA.
-
+Gene models were generated using BRAKER4 with the genome assembly, RNA-seq alignments, and protein homology evidence. The genome assembly was not soft-masked prior to annotation; therefore, repeat masking was performed internally by the BRAKER4 workflow using RepeatModeler, RepeatMasker, and TRF. RNA-seq and protein evidence were supplied through `samples.csv`, which triggered BRAKER4 ETP mode using GeneMark-ETP, AUGUSTUS, and TSEBRA.
 ```text
 Genome FASTA
    ↓
-BRAKER4 internal repeat masking with RED
+STAR genome indexing
    ↓
-RNA-seq alignment evidence: STAR coordinate-sorted BAM
+STAR RNA-seq alignment → coordinate-sorted BAM
+   ↓
+BRAKER4 internal repeat masking: RepeatModeler + RepeatMasker + TRF
    ↓
 Protein homology evidence: OrthoDB Stramenopiles + Phaeodactylum tricornutum
    ↓
@@ -329,7 +330,6 @@ BRAKER4 was cloned from GitHub, and the BRAKER3 Singularity image was downloaded
 ```bash
 git clone https://github.com/Gaius-Augustus/BRAKER4.git
 cd BRAKER4
-
 singularity pull braker3.sif docker://teambraker/braker3:latest
 ```
 Snakemake was installed in the working environment:
@@ -342,11 +342,41 @@ GeneMark requires a license key. The GeneMark key was stored at:
 ```
 The GeneMark key path was specified in `config.ini`.
 ## 12.2 RNA-seq Alignment Evidence for BRAKER4
-The final RNA-seq alignment file used for BRAKER4 was a coordinate-sorted STAR BAM file:
+RNA-seq reads were aligned to the diatom genome assembly using STAR before running BRAKER4. BRAKER4 was therefore supplied with a precomputed coordinate-sorted BAM file rather than raw RNA-seq FASTQ files.
+The genome assembly used for STAR indexing was:
+```bash
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta
+```
+A STAR genome index was generated using the diatom genome assembly:
+```bash
+STAR \
+    --runThreadN 24 \
+    --runMode genomeGenerate \
+    --genomeDir /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index \
+    --genomeFastaFiles /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta \
+    --genomeSAindexNbases 10
+```
+RNA-seq reads from the diatom consortium were aligned to the genome using STAR. The output was written directly as a coordinate-sorted BAM file:
+```bash
+STAR \
+    --runThreadN 24 \
+    --genomeDir /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index \
+    --readFilesCommand zcat \
+    --readFilesIn R1_rep1.fastq.gz,R1_rep2.fastq.gz,R1_rep3.fastq.gz \
+                  R2_rep1.fastq.gz,R2_rep2.fastq.gz,R2_rep3.fastq.gz \
+    --outSAMtype BAM SortedByCoordinate \
+    --outSAMstrandField intronMotif \
+    --outFileNamePrefix /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_
+```
+This generated the coordinate-sorted BAM file used as RNA-seq evidence for BRAKER4:
 ```bash
 /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam
 ```
-The corresponding BAM index was also present:
+The BAM file was indexed:
+```bash
+samtools index /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam
+```
+The corresponding BAM index was:
 ```bash
 /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam.bai
 ```
@@ -355,13 +385,9 @@ The BAM and BAM index were checked before BRAKER4 execution:
 ls -lh /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam
 ls -lh /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam.bai
 ```
-If the BAM index is missing, it can be generated with:
-```bash
-samtools index /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam
-```
+The STAR BAM provides RNA-seq evidence for splice junctions, transcript coverage, and exon-intron boundaries during BRAKER4 gene prediction.
 ## 12.3 Protein Evidence Preparation
 Protein evidence was prepared from broad stramenopile and diatom-related protein databases rather than from a single reference species. The final evidence set included OrthoDB Stramenopiles proteins and *Phaeodactylum tricornutum* proteins.
-
 ```bash
 mkdir -p /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/proteins
 cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/proteins
@@ -375,12 +401,12 @@ gzip -t Stramenopiles.fa.gz
 gunzip -c Stramenopiles.fa.gz > OrthoDB12_Stramenopiles.fa
 ```
 The OrthoDB Stramenopiles FASTA file was checked:
-
 ```bash
 grep -c "^>" OrthoDB12_Stramenopiles.fa
 seqkit stats OrthoDB12_Stramenopiles.fa
 ```
 ### 12.3.2 Download *Phaeodactylum tricornutum* Proteins
+
 ```bash
 wget -c https://ftp.ensemblgenomes.ebi.ac.uk/pub/protists/release-63/fasta/phaeodactylum_tricornutum/pep/Phaeodactylum_tricornutum.ASM15095v2.pep.all.fa.gz
 
@@ -411,7 +437,9 @@ seqkit seq -m 30 diatom_protein_evidence.raw.faa \
 The final protein evidence file was checked before use:
 ```bash
 seqkit stats diatom_protein_evidence.raw.faa diatom_protein_evidence.clean.faa
+
 grep -n "\*" diatom_protein_evidence.clean.faa | head
+
 grep -n -v -E '^>|^[A-Z]+$' diatom_protein_evidence.clean.faa | head
 ```
 No stop codons or malformed sequence lines were detected. The cleaned protein evidence file used for BRAKER4 was:
@@ -432,13 +460,14 @@ The output was:
 ```text
 not soft-masked
 ```
-Therefore, the `genome_masked` column in `samples.csv` was left empty, and internal repeat masking was enabled in `config.ini` using:
-```ini
-run_red = True
+Therefore, the `genome_masked` column in `samples.csv` was left empty, and internal repeat masking was enabled in `config.ini`. During the BRAKER4 run, the masking rule used RepeatModeler to identify repeat families, RepeatMasker to soft-mask repeat regions, and TRF to mask tandem repeats.
+The masking step generated:
+```bash
+output/DL_diatom/preprocessing/genome.fa.masked
 ```
-External RepeatModeler and RepeatMasker were not used in this BRAKER4 run.
+External pre-masking with RepeatModeler and RepeatMasker was not performed before BRAKER4; masking was handled inside the BRAKER4 workflow.
 ## 12.5 BRAKER4 Sample Configuration
-A `samples.csv` file was prepared to specify the genome assembly, protein evidence, RNA-seq BAM file, and BUSCO lineage. Providing both `protein_fasta` and `bam_files` triggered ETP mode in BRAKER4.
+A `samples.csv` file was prepared to specify the genome assembly, protein evidence, RNA-seq BAM file, and BUSCO lineage. The STAR alignment step was performed before BRAKER4, so the precomputed coordinate-sorted BAM file was supplied in the `bam_files` column. Providing both `protein_fasta` and `bam_files` triggered ETP mode in BRAKER4.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4
 nano samples.csv
@@ -481,11 +510,13 @@ cpus_per_task = 32
 mem_of_node = 350000
 max_runtime = 7200
 ```
-The key setting was:
+The key settings were:
 ```ini
 run_red = True
+mode = etp
 ```
-This was required because the genome assembly was not soft-masked.
+These were used because the genome assembly was not soft-masked and because the annotation was run with both RNA-seq and protein evidence.
+
 ## 12.7 Snakemake Dry Run
 A Snakemake dry run was performed before launching the full BRAKER4 analysis:
 ```bash
@@ -539,7 +570,7 @@ singularity exec \
     braker3.sif \
     ls -lh /home/ruchita.solanki/.gm_key
 ```
-BRAKER4 internally performs RED repeat masking, GeneMark-ETP training, AUGUSTUS training and prediction, evidence integration, TSEBRA refinement, BUSCO/compleasm assessment, and final result collection.
+BRAKER4 internally performs repeat masking, GeneMark-ETP training, AUGUSTUS training and prediction, evidence integration, TSEBRA refinement, BUSCO/compleasm assessment, and final result collection.
 ## 12.9 Extraction of Final Annotation Files
 After BRAKER4 completed successfully, the final annotation files were extracted from the BRAKER4 results directory.
 Output directory:
