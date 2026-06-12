@@ -259,7 +259,6 @@ The resulting dataset contained homologous proteins from:
 
 This dataset provided phylogenetically distributed protein homology signals rather than a single-reference proteome, improving sensitivity across divergent gene families.
 ## 5. Genome Annotation with BRAKER4
-
 BRAKER4 was used to generate evidence-supported structural gene predictions using the genome assembly, RNA-seq alignments, and protein evidence. Because the genome assembly was not soft-masked, repeat masking was performed internally by BRAKER4 using RED. RNA-seq and protein evidence were provided through the `samples.csv` file, which triggered the GeneMark-ETP and AUGUSTUS workflow.
 ### 5.1 BRAKER4 Setup
 BRAKER4 was cloned from GitHub, and the BRAKER3 Singularity image was downloaded for containerized execution.
@@ -274,7 +273,41 @@ Snakemake was installed in the working environment:
 conda install -c conda-forge -c bioconda snakemake
 ```
 ### 5.2 Protein Evidence Preparation
-Protein evidence was prepared from diatom and stramenopile protein databases. The final combined protein FASTA was filtered to remove short sequences and duplicate protein sequences.
+Protein evidence was prepared from diatom and stramenopile protein databases. A broad protein evidence set was used rather than a single species proteome. The evidence included OrthoDB Stramenopiles proteins, and *Phaeodactylum tricornutum* proteins.
+```
+mkdir -p /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/proteins
+cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/proteins
+```
+OrthoDB Stramenopiles proteins were downloaded:
+```
+wget -c https://bioinf.uni-greifswald.de/bioinf/partitioned_odb12/Stramenopiles.fa.gz
+
+gzip -t Stramenopiles.fa.gz
+
+gunzip -c Stramenopiles.fa.gz > OrthoDB12_Stramenopiles.fa
+```
+ *Phaeodactylum tricornutum* protein evidence was downloaded from Ensembl Protists:
+```
+wget -c https://ftp.ensemblgenomes.ebi.ac.uk/pub/protists/release-63/fasta/phaeodactylum_tricornutum/pep/Phaeodactylum_tricornutum.ASM15095v2.pep.all.fa.gz
+
+gzip -t Phaeodactylum_tricornutum.ASM15095v2.pep.all.fa.gz
+
+gunzip -c Phaeodactylum_tricornutum.ASM15095v2.pep.all.fa.gz \
+    > Phaeodactylum_tricornutum.ASM15095v2.pep.all.fa
+```
+The downloaded protein FASTA files were checked:
+```bash
+seqkit stats OrthoDB12_Stramenopiles.fa
+seqkit stats Phaeodactylum_tricornutum.ASM15095v2.pep.all.fa
+```
+The protein evidence files were combined:
+```
+cat \
+    OrthoDB12_Stramenopiles.fa \
+    Phaeodactylum_tricornutum.ASM15095v2.pep.all.fa \
+    > diatom_protein_evidence.raw.faa
+```
+The combined protein FASTA was filtered to remove short sequences and duplicate protein sequences:
 ```
 seqkit seq -m 30 diatom_protein_evidence.raw.faa \
     | seqkit rmdup -s \
@@ -282,8 +315,10 @@ seqkit seq -m 30 diatom_protein_evidence.raw.faa \
 ```
 The final protein evidence file was checked before use:
 ```
-seqkit stats diatom_protein_evidence.clean.faa
+seqkit stats diatom_protein_evidence.raw.faa diatom_protein_evidence.clean.faa
+
 grep -n "\*" diatom_protein_evidence.clean.faa | head
+
 grep -n -v -E '^>|^[A-Z]+$' diatom_protein_evidence.clean.faa | head
 ```
 No stop codons or malformed sequence lines were detected. The cleaned protein evidence file was used for BRAKER4:
@@ -300,7 +335,7 @@ sample_name,genome,genome_masked,protein_fasta,bam_files,fastq_r1,fastq_r2,sra_i
 DL_diatom,/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta,,/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/proteins/diatom_protein_evidence.clean.faa,/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam,,,,,,,,stramenopiles_odb12
 ```
 The `genome_masked` column was left empty because the genome was not soft-masked:
-```
+```bash
 grep -v "^>" /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta \
     | grep -q '[a-z]' && echo "soft-masked" || echo "not soft-masked"
 ```
@@ -336,16 +371,12 @@ mode = etp
 [SLURM_ARGS]
 cpus_per_task = 32
 mem_of_node = 350000
-max_runtime = 7200
-```
-The key setting was:
-```
-run_red = True
+max_runtime = 120
 ```
 This was used because the genome assembly was not soft-masked.
 ### 5.5 Dry Run
 A Snakemake dry run was performed before launching the full analysis:
-```
+```bash
 snakemake \
     -s Snakefile \
     --use-singularity \
@@ -365,17 +396,18 @@ busco_genome
 busco_proteins
 collect_results
 ```
-The presence of `run_genemark_etp` confirmed that BRAKER4 recognized the RNA-seq and protein evidence and configured the run in ETP mode.
+The presence of `run_genemark_etp` confirmed that BRAKER4 recognized the RNA-seq and protein evidence and configured the run in ETP mode. The presence of `run_tsebra` confirmed that TSEBRA refinement would be performed internally by BRAKER4; therefore, TSEBRA does not need to be run separately after completion.
 ### 5.6 BRAKER4 Execution
 After the dry run completed successfully, BRAKER4 was executed using the official BRAKER4 `Snakefile`.
-```bash
+```
 snakemake \
     -s Snakefile \
     --use-singularity \
     --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics" \
     --cores 24 \
     --latency-wait 120 \
-    --printshellcmds
+    --printshellcmds \
+    --rerun-incomplete
 ```
 If the GeneMark key is not visible inside the container, the home directory can also be bound:
 ```bash
@@ -385,6 +417,125 @@ snakemake \
     --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics,/home/ruchita.solanki" \
     --cores 24 \
     --latency-wait 120 \
-    --printshellcmds
+    --printshellcmds \
+    --rerun-incomplete
 ```
 BRAKER4 internally performs repeat masking, GeneMark-ETP training, AUGUSTUS training and prediction, evidence integration, TSEBRA refinement, BUSCO/compleasm assessment, and final result collection. The final annotation files generated by BRAKER4 include GTF/GFF3 gene models, predicted coding sequences, and predicted protein sequences for downstream functional annotation and BUSCO assessment.
+### 5.7 Extraction of Final Annotation Files
+After BRAKER4 completed successfully, the final annotation files were extracted from the BRAKER4 results directory. The expected output directory is:
+```
+output/DL_diatom/results/
+```
+The compressed final files were extracted as follows:
+```
+cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/output/DL_diatom/results
+
+gunzip -c braker.gtf.gz > DL_diatom.braker4.gtf
+gunzip -c braker.gff3.gz > DL_diatom.braker4.gff3
+gunzip -c braker.aa.gz > DL_diatom.braker4.proteins.faa
+gunzip -c braker.codingseq.gz > DL_diatom.braker4.cds.fna
+```
+The final files are:
+```text
+DL_diatom.braker4.gtf
+DL_diatom.braker4.gff3
+DL_diatom.braker4.proteins.faa
+DL_diatom.braker4.cds.fna
+```
+No additional TSEBRA run was performed, because the BRAKER4 workflow had already included TSEBRA refinement internally.
+### 5.8 Basic Annotation Statistics
+Basic annotation statistics were generated from the final GFF3, protein FASTA, and CDS FASTA files.
+```bash
+grep -c $'\tgene\t' DL_diatom.braker4.gff3
+grep -c $'\tmRNA\t' DL_diatom.braker4.gff3
+grep -c $'\tCDS\t' DL_diatom.braker4.gff3
+
+grep -c "^>" DL_diatom.braker4.proteins.faa
+grep -c "^>" DL_diatom.braker4.cds.fna
+
+seqkit stats DL_diatom.braker4.proteins.faa
+seqkit stats DL_diatom.braker4.cds.fna
+```
+Predicted proteins were also checked for stop codons:
+```bash
+grep -n "\*" DL_diatom.braker4.proteins.faa | head
+```
+Very short predicted proteins were inspected:
+```bash
+seqkit fx2tab -n -l DL_diatom.braker4.proteins.faa \
+    | awk '$2 < 50' \
+    | head
+```
+### 5.9 BRAKER4 Reports and Evidence Support
+BRAKER4 report files and quality-control summaries were located using:
+```bash
+find . -type f | grep -Ei "report|summary|busco|compleasm|statistics|support"
+```
+Relevant outputs include the BRAKER4 HTML report, BUSCO/compleasm summaries, gene set statistics, and evidence-support files such as:
+```
+braker_report.html
+gene_support.tsv
+```
+These files were used to assess annotation completeness, evidence support, and overall gene model quality.
+### 5.10 Independent BUSCO Assessment
+An independent BUSCO assessment was performed on the predicted protein set.
+```
+busco \
+    -i DL_diatom.braker4.proteins.faa \
+    -l stramenopiles_odb12 \
+    -m proteins \
+    -o busco_DL_diatom_braker4_proteins \
+    -c 24
+```
+The BUSCO output was used to evaluate the completeness of the predicted protein set.
+### 5.11 Longest Isoform Extraction
+If BRAKER4 generated longest-isoform files, these were extracted for downstream functional annotation:
+```
+find . -type f | grep -Ei "longest|aa|codingseq"
+```
+If present, the longest-isoform protein and CDS files were extracted:
+```
+gunzip -c braker.longest.aa.gz > DL_diatom.braker4.longest.proteins.faa
+gunzip -c braker.longest.codingseq.gz > DL_diatom.braker4.longest.cds.fna
+```
+The longest protein isoform file was used preferentially for downstream functional annotation:
+```
+DL_diatom.braker4.longest.proteins.faa
+```
+If longest-isoform files were not available, the full BRAKER4 protein set was used:
+```
+DL_diatom.braker4.proteins.faa
+```
+### 5.12 Functional Annotation
+The final protein set was used for downstream functional annotation. Annotation tools may include:
+```
+eggNOG-mapper
+InterProScan
+DIAMOND/BLASTP against UniProt or Swiss-Prot
+KEGG/KO annotation
+```
+Functional annotation focused on pathways relevant to the diatom-dominated consortium, including photosynthesis, carbon-concentrating mechanisms, silica and frustule formation, nitrogen assimilation, lipid metabolism, vitamin and cofactor metabolism, stress responses, motility, and extracellular polymeric substance production.
+### 5.13 Expression Quantification Against the Final Gene Models
+After the final BRAKER4 annotation was accepted, RNA-seq expression was quantified against the final GTF file.
+For gene-level counts, `featureCounts` can be used:
+```
+featureCounts \
+    -T 24 \
+    -p \
+    -t exon \
+    -g gene_id \
+    -a DL_diatom.braker4.gtf \
+    -o DL_diatom.braker4.featureCounts.txt \
+    /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam
+```
+Alternatively, StringTie can be used to estimate transcript abundance:
+```
+stringtie \
+    /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam \
+    -G DL_diatom.braker4.gtf \
+    -e \
+    -B \
+    -p 24 \
+    -o DL_diatom.stringtie.gtf
+```
+The resulting expression estimates can be used with the functional annotation to summarize transcriptional activity across major diatom functional categories.
