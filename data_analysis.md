@@ -259,65 +259,132 @@ The resulting dataset contained homologous proteins from:
 
 This dataset provided phylogenetically distributed protein homology signals rather than a single-reference proteome, improving sensitivity across divergent gene families.
 ## 5. Genome Annotation with BRAKER4
-BRAKER4 was used to generate evidence-supported structural gene predictions from the soft-masked genome and RNA-seq alignments.
+
+BRAKER4 was used to generate evidence-supported structural gene predictions using the genome assembly, RNA-seq alignments, and protein evidence. Because the genome assembly was not soft-masked, repeat masking was performed internally by BRAKER4 using RED. RNA-seq and protein evidence were provided through the `samples.csv` file, which triggered the GeneMark-ETP and AUGUSTUS workflow.
 ### 5.1 BRAKER4 Setup
+BRAKER4 was cloned from GitHub, and the BRAKER3 Singularity image was downloaded for containerized execution.
 ```
 git clone https://github.com/Gaius-Augustus/BRAKER4.git
+cd BRAKER4
+
 singularity pull braker3.sif docker://teambraker/braker3:latest
 ```
-### 5.2 Sample Configuration
-A samples.csv configuration file was prepared specifying the genome assembly and transcriptomic evidence.
+Snakemake was installed in the working environment:
 ```
-echo "Diatom_18,/work/ebg_lab/eb/metatranscriptomics/18_diatom.fasta.masked,/work/ebg_lab/eb/metatranscriptomics/Diatoms_Combined_Aligned.sortedByCoord.out.bam," > samples.csv
-```
-### 5.3 BRAKER4 Execution
-```
-# Install snakemake in braker env
 conda install -c conda-forge -c bioconda snakemake
 ```
-### 5.3.1. Create the Snakefile
+### 5.2 Protein Evidence Preparation
+Protein evidence was prepared from diatom and stramenopile protein databases. The final combined protein FASTA was filtered to remove short sequences and duplicate protein sequences.
 ```
-nano Snakefile
-# Minimal Snakefile for BRAKER3
-configfile: "config.yaml"
-
-rule all:
-    input:
-        "braker_results/braker.gtf"
-
-rule run_braker3:
-    input:
-        genome = "genome_index/18_diatom.fasta",
-        bam = "genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam"
-    output:
-        "braker_results/braker.gtf"
-    threads: 24
-    container: config["sif_image"]
-    shell:
-        """
-        braker.pl --genome={input.genome} \
-                  --bam={input.bam} \
-                  --threads={threads} \
-                  --workingdir=braker_results
-        """
+seqkit seq -m 30 diatom_protein_evidence.raw.faa \
+    | seqkit rmdup -s \
+    > diatom_protein_evidence.clean.faa
 ```
-### 5.3.2. Create a Config file
-Run 
-nano config.yaml
-and add the link to your image
+The final protein evidence file was checked before use:
 ```
-sif_image: "braker3.sif"
+seqkit stats diatom_protein_evidence.clean.faa
+grep -n "\*" diatom_protein_evidence.clean.faa | head
+grep -n -v -E '^>|^[A-Z]+$' diatom_protein_evidence.clean.faa | head
+```
+No stop codons or malformed sequence lines were detected. The cleaned protein evidence file was used for BRAKER4:
+```
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/proteins/diatom_protein_evidence.clean.faa
+```
+### 5.3 Sample Configuration
+A `samples.csv` file was prepared to specify the genome assembly, protein evidence, RNA-seq alignment file, and BUSCO lineage. Both `protein_fasta` and `bam_files` were provided, which triggers ETP mode in BRAKER4.
+```
+nano samples.csv
+```
+```
+sample_name,genome,genome_masked,protein_fasta,bam_files,fastq_r1,fastq_r2,sra_ids,varus_genus,varus_species,isoseq_bam,isoseq_fastq,busco_lineage
+DL_diatom,/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta,,/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/proteins/diatom_protein_evidence.clean.faa,/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam,,,,,,,,stramenopiles_odb12
+```
+The `genome_masked` column was left empty because the genome was not soft-masked:
+```
+grep -v "^>" /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta \
+    | grep -q '[a-z]' && echo "soft-masked" || echo "not soft-masked"
+```
+The `samples.csv` file was checked to confirm that the expected number of columns was present:
+```
+awk -F',' '{print NR, NF}' samples.csv
+```
+Expected output:
+```
+1 13
+2 13
+```
+### 5.4 BRAKER4 Configuration
+The `config.ini` file was edited to specify the Singularity image, GeneMark license key, sample file, repeat masking option, and run parameters.
+```
+nano config.ini
+```
+```
+[paths]
+braker_container = /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/braker3.sif
+genemark_key = /home/ruchita.solanki/.gm_key
 
+[DATA]
+samples = samples.csv
 
+[PARAMS]
+fungus = False
+min_contig = 1000
+run_red = True
+species = diatom_v1
+mode = etp
+
+[SLURM_ARGS]
+cpus_per_task = 32
+mem_of_node = 350000
+max_runtime = 7200
+```
+The key setting was:
+```
+run_red = True
+```
+This was used because the genome assembly was not soft-masked.
+### 5.5 Dry Run
+A Snakemake dry run was performed before launching the full analysis:
+```
 snakemake \
     -s Snakefile \
     --use-singularity \
     --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics" \
     --cores 24 \
-    --config sif_image=braker3.sif
+    --latency-wait 120 \
+    --printshellcmds \
+    -n
 ```
-BRAKER4 internally performs:
-- GeneMark self-training
-- AUGUSTUS-based ab initio prediction
-- Incorporation of RNA-seq splice evidence                          
-The final protein set ```diatom_proteins.faa``` was used for downstream functional annotation and BUSCO assessment.
+The dry run successfully built the workflow DAG and included the expected BRAKER4 rules, including:
+```
+run_masking
+run_genemark_etp
+run_tsebra
+run_augustus_hints
+busco_genome
+busco_proteins
+collect_results
+```
+The presence of `run_genemark_etp` confirmed that BRAKER4 recognized the RNA-seq and protein evidence and configured the run in ETP mode.
+### 5.6 BRAKER4 Execution
+After the dry run completed successfully, BRAKER4 was executed using the official BRAKER4 `Snakefile`.
+```bash
+snakemake \
+    -s Snakefile \
+    --use-singularity \
+    --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics" \
+    --cores 24 \
+    --latency-wait 120 \
+    --printshellcmds
+```
+If the GeneMark key is not visible inside the container, the home directory can also be bound:
+```bash
+snakemake \
+    -s Snakefile \
+    --use-singularity \
+    --singularity-args "--bind /work/ebg_lab/eb/diatom_consortia/metatranscriptomics,/home/ruchita.solanki" \
+    --cores 24 \
+    --latency-wait 120 \
+    --printshellcmds
+```
+BRAKER4 internally performs repeat masking, GeneMark-ETP training, AUGUSTUS training and prediction, evidence integration, TSEBRA refinement, BUSCO/compleasm assessment, and final result collection. The final annotation files generated by BRAKER4 include GTF/GFF3 gene models, predicted coding sequences, and predicted protein sequences for downstream functional annotation and BUSCO assessment.
