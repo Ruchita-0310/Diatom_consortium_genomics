@@ -642,3 +642,18 @@ stringtie \
     -o DL_diatom.braker4.ET.stringtie.gtf
 ```
 The resulting expression estimates can be combined with the functional annotation table to summarize transcriptional activity across major diatom functional categories.
+## 12.14 Rationale for Using ET Mode Instead of ETP
+BRAKER4 was initially tested in ETP mode, which combines RNA-seq evidence with protein evidence. However, the GeneMark-ETP step failed during model training. Although protein-supported alignments were generated, the GeneMark-ETP training set did not produce valid gene and transcript models for training. The failed run reported zero parsed genes and transcripts, CDS-only training entries, and phase-distribution errors, followed by division-by-zero errors in the GeneMark-ETP training scripts:
+```text
+genes: 0
+transcripts: 0
+CDS: 1724
+
+Use of uninitialized value $ph1 in addition (+) at /opt/ETP/bin/gmes/parse_set.pl line 205.
+Use of uninitialized value $ph0 in division (/) at /opt/ETP/bin/gmes/parse_set.pl line 208.
+Illegal division by zero at /opt/ETP/bin/gmes/parse_set.pl line 208.
+Illegal division by zero at /opt/ETP/bin/train_super.pl line 184.
+ERROR: GeneMark-ETP failed, no genemark.gtf
+```
+Because GeneMark-ETP did not complete successfully, the annotation was rerun in ET mode using RNA-seq evidence only. This avoided the failed protein-dependent GeneMark-ETP training step while retaining transcript evidence from the coordinate-sorted STAR BAM file. The final successful workflow therefore used GeneMark-ET, AUGUSTUS, and TSEBRA, with `protein_fasta` left empty in `samples.csv` and `mode = et` specified in `config.ini`.
+The ET-mode dry run confirmed the expected workflow by including `run_genemark_et` and excluding `run_genemark_etp`. The final ET-mode annotation completed successfully and was therefore used for downstream analysis.
