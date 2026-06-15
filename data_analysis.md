@@ -657,3 +657,118 @@ ERROR: GeneMark-ETP failed, no genemark.gtf
 ```
 Because GeneMark-ETP did not complete successfully, the annotation was rerun in ET mode using RNA-seq evidence only. This avoided the failed protein-dependent GeneMark-ETP training step while retaining transcript evidence from the coordinate-sorted STAR BAM file. The final successful workflow therefore used GeneMark-ET, AUGUSTUS, and TSEBRA, with `protein_fasta` left empty in `samples.csv` and `mode = et` specified in `config.ini`.
 The ET-mode dry run confirmed the expected workflow by including `run_genemark_et` and excluding `run_genemark_etp`. The final ET-mode annotation completed successfully and was therefore used for downstream analysis.
+
+---
+# 13. Nuclear Genome Identification
+After the initial BRAKER4 ET annotation, the nuclear genome was defined more explicitly from the polished whole-genome assembly. At this stage, three genome components had been recovered from the diatom-associated consortium:
+```text
+Whole draft genome assembly: ~84 Mbp
+Chloroplast genome:          ~120 kbp
+Mitogenome:                  ~38 kbp
+```
+The working definition used here was:
+```text
+nuclear-enriched genome = whole draft genome assembly - chloroplast-derived contigs - mitochondrial-derived contigs
+```
+No BLAST-based taxonomic filtering was performed at this stage. Instead, the nuclear genome was identified by subtractive removal of chloroplast-like and mitochondrial-like contigs from the polished whole-genome assembly.
+## 13.1 Rationale
+The polished whole-genome assembly contained the diatom nuclear genome as well as organelle-derived sequences. Because the chloroplast and mitochondrial genomes had already been identified, these organelle assemblies were used as internal references to identify and remove organelle-like contigs from the whole draft assembly.
+The remaining contigs were retained as the nuclear-enriched diatom genome assembly. This assembly was then used as the basis for downstream genome interpretation and could be used for reannotation, comparative genomics, and functional analysis.
+## 13.2 Organelle Genome References
+The recovered chloroplast and mitochondrial genomes were used as references for subtractive filtering.
+```text
+Chloroplast genome: ~120 kbp
+Mitogenome:         ~38 kbp
+```
+These organelle genomes were combined into a single reference FASTA file.
+
+```bash
+cat chloroplast_120kb.fasta mitogenome_38kb.fasta > organelles.fasta
+```
+## 13.3 Identify Organelle-like Contigs in the Whole Assembly
+The polished whole-genome assembly was aligned against the combined organelle reference.
+```bash
+minimap2 -x asm5 \
+    organelles.fasta \
+    whole_genome_84M.fasta \
+    > whole_vs_organelle.paf
+```
+Contigs were flagged as organelle-like if most of the contig aligned to the chloroplast or mitochondrial genome. A 70% contig-coverage threshold was used to identify contigs with strong organelle similarity.
+
+```bash
+awk '{
+  q=$1; qlen=$2; aln=$11;
+  cov[q]+=aln; len[q]=qlen
+}
+END {
+  for (q in cov) {
+    if (cov[q]/len[q] >= 0.70) print q
+  }
+}' whole_vs_organelle.paf > organelle_like_contigs.txt
+```
+The resulting file contained contig IDs classified as chloroplast-like or mitochondrial-like.
+```text
+organelle_like_contigs.txt
+```
+## 13.4 Remove Organelle-like Contigs
+Organelle-like contigs were removed from the polished whole-genome assembly using `seqkit`.
+```bash
+seqkit grep \
+    -v \
+    -f organelle_like_contigs.txt \
+    whole_genome_84M.fasta \
+    > diatom_nuclear_genome.fasta
+```
+The output FASTA represented the nuclear-enriched diatom genome assembly.
+```text
+diatom_nuclear_genome.fasta
+```
+## 13.5 Assembly Statistics
+Assembly statistics were calculated before and after organelle removal.
+```bash
+seqkit stats \
+    whole_genome_84M.fasta \
+    diatom_nuclear_genome.fasta
+```
+
+This comparison was used to confirm the change in assembly size after removing chloroplast-like and mitochondrial-like contigs.
+## 13.6 BUSCO Assessment
+BUSCO was used to assess the completeness of the nuclear-enriched genome assembly.
+
+```bash
+busco \
+    -i diatom_nuclear_genome.fasta \
+    -l stramenopiles_odb10 \
+    -m genome \
+    -o busco_diatom_nuclear_genome \
+    -c 32
+```
+The BUSCO result was used to evaluate whether the organelle-filtered assembly retained conserved stramenopile genes expected from a diatom nuclear genome.
+## 13.7 Transcriptome Context
+An assembled transcriptome was also available for the diatom consortium. This transcriptome provided additional biological context for downstream annotation and interpretation of the nuclear-enriched assembly. However, transcriptome support was not used as a taxonomic filtering step during nuclear genome identification.
+## 13.8 Final Nuclear Genome Definition
+The final nuclear genome was defined as the polished whole-genome assembly after removal of contigs with strong similarity to the recovered chloroplast and mitochondrial genomes.
+```text
+Final nuclear-enriched genome:
+diatom_nuclear_genome.fasta
+```
+This file represents the diatom nuclear-enriched genome assembly used for downstream interpretation.
+## 13.9 Summary of Nuclear Genome Identification
+```text
+Polished whole-genome assembly
+   ↓
+Recovered chloroplast and mitochondrial genomes
+   ↓
+Combined organelle reference FASTA
+   ↓
+Aligned whole assembly against organelle genomes
+   ↓
+Identified chloroplast-like and mitochondrial-like contigs
+   ↓
+Removed organelle-like contigs
+   ↓
+Generated nuclear-enriched diatom genome FASTA
+   ↓
+Assessed assembly statistics and BUSCO completeness
+```
+In this study, the nuclear-enriched diatom genome was identified after the initial BRAKER4 annotation by subtractive filtering of the polished whole-genome assembly. The final genome was defined by removing contigs with strong similarity to the recovered chloroplast and mitochondrial genomes. No BLAST-based taxonomic filtering was performed at this stage.
