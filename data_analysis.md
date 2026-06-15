@@ -730,7 +730,6 @@ seqkit stats \
     whole_genome_84M.fasta \
     diatom_nuclear_genome.fasta
 ```
-
 This comparison was used to confirm the change in assembly size after removing chloroplast-like and mitochondrial-like contigs.
 ## 13.6 BUSCO Assessment
 BUSCO was used to assess the completeness of the nuclear-enriched genome assembly.
@@ -746,33 +745,7 @@ busco \
 The BUSCO result was used to evaluate whether the organelle-filtered assembly retained conserved stramenopile genes expected from a diatom nuclear genome.
 ## 13.7 Transcriptome Context
 An assembled transcriptome was also available for the diatom consortium. This transcriptome provided additional biological context for downstream annotation and interpretation of the nuclear-enriched assembly. However, transcriptome support was not used as a taxonomic filtering step during nuclear genome identification.
-## 13.8 Final Nuclear Genome Definition
-The final nuclear genome was defined as the polished whole-genome assembly after removal of contigs with strong similarity to the recovered chloroplast and mitochondrial genomes.
-```text
-Final nuclear-enriched genome:
-diatom_nuclear_genome.fasta
-```
-This file represents the diatom nuclear-enriched genome assembly used for downstream interpretation.
-## 13.9 Summary of Nuclear Genome Identification
-```text
-Polished whole-genome assembly
-   ↓
-Recovered chloroplast and mitochondrial genomes
-   ↓
-Combined organelle reference FASTA
-   ↓
-Aligned whole assembly against organelle genomes
-   ↓
-Identified chloroplast-like and mitochondrial-like contigs
-   ↓
-Removed organelle-like contigs
-   ↓
-Generated nuclear-enriched diatom genome FASTA
-   ↓
-Assessed assembly statistics and BUSCO completeness
-```
-In this study, the nuclear-enriched diatom genome was identified after the initial BRAKER4 annotation by subtractive filtering of the polished whole-genome assembly. The final genome was defined by removing contigs with strong similarity to the recovered chloroplast and mitochondrial genomes. No BLAST-based taxonomic filtering was performed at this stage.
-## 13.8 Final Nuclear Genome Definition
+## 13.9 Final Nuclear Genome Definition
 The final nuclear genome was defined as the polished whole-genome assembly after removal of contigs with strong similarity to the recovered chloroplast and mitochondrial genomes.
 ```text
 Final nuclear-enriched genome:
