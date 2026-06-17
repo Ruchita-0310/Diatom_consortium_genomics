@@ -38,6 +38,19 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Gene annotation | STAR, BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, BUSCO/compleasm |
 | Comparative genomics | NCBI Datasets, BLASTN, bedtools, Python |
 
+## Repository structure for scripts
+
+Custom Python scripts are stored in the `scripts/` directory rather than embedded directly in this README.
+
+```text
+scripts/
+├── classify_metaeuk_contigs.py
+├── make_swissprot_best_hits.py
+└── make_bacillariophyta_best_hits.py
+```
+
+Each script can be run from the command line in the relevant working directory, as shown in the sections below.
+
 ---
 # 1. Genome assembly
 Long-read assembly was performed with Nanopore reads basecalled with Guppy. Flye was run in metagenome mode because the sample represented a diatom-associated microbial consortium rather than an isolate genome.
@@ -244,125 +257,16 @@ Unclassified = no biological MetaEuk hits are detected
 ```
 Thus, contigs that fail the 30% rule and do not have a single strictly dominant biological category are labeled `Ambiguous (Cellular Org)`.
 ## 7.4 Python script
-```python
-import pandas as pd
-import matplotlib.pyplot as plt
-import re
+The full Python script is saved in:
 
-# 1. Load Data
-# Note: Using your specific filename 'metaeuk_output_polyp_taxonomy_tax_per_pred.tsv'
-df_meta = pd.read_csv('metaeuk_output_polyp_taxonomy_tax_per_pred.tsv', sep='\t')
-df_bins = pd.read_csv('contig_to_bin.txt', sep='\t', names=['bin_name', 'contig ID'])
+```text
+scripts/classify_metaeuk_contigs.py
+```
 
-# 2. Updated Organelle-Aware Labeling Logic
-def get_organelle_label(classification):
-    if pd.isna(classification) or str(classification).strip() == "": 
-        return 'Unclassified'
-    
-    clean_class = str(classification).strip()
-    
-    # Eukaryotic check
-    if 'd_Eukaryota' in clean_class:
-        return 'Eukaryota'
-    
-    # Mitochondria check
-    if 'o_Rickettsiales' in clean_class or 'o__Rickettsiales' in clean_class:
-        return 'Mitochondria-derived'
-    
-    # Chloroplast check (Cyanobacteria proxy)
-    if 'p_Cyanobacteria' in clean_class:
-        return 'Chloroplast-derived'
-    
-    # Standard Root check
-    if clean_class == "_cellular organisms":
-        return 'Ambiguous (Cellular Org)'
-    
-    # Standard Bacteria check
-    if 'd_Bacteria' in clean_class:
-        return 'Bacteria'
-    
-    # Archaea/Viruses
-    return 'Other'
+Run the script from the directory containing `metaeuk_output_polyp_taxonomy_tax_per_pred.tsv` and `contig_to_bin.txt`:
 
-df_meta['label'] = df_meta['Classification'].apply(get_organelle_label)
-
-# 3. Aggregate hits per contig
-contig_stats = df_meta.groupby('Contig_ID')['label'].value_counts().unstack(fill_value=0)
-
-# 4. Final Decision Logic (Priority Hierarchy)
-def final_decision_hierarchy(row):
-    euk = row.get('Eukaryota', 0)
-    mito = row.get('Mitochondria-derived', 0)
-    chloro = row.get('Chloroplast-derived', 0)
-    bac = row.get('Bacteria', 0)
-    other = row.get('Other', 0)
-    ambig = row.get('Ambiguous (Cellular Org)', 0)
-    
-    total_bio = euk + mito + chloro + bac + other + ambig
-    
-    if total_bio == 0:
-        return 'Unclassified'
-
-    # STEP A: The 30% Rule (HIGHEST PRIORITY)
-    # If this is met, we don't care if Bacteria has more hits.
-    euk_score = (euk + mito + chloro) / total_bio
-    if euk_score > 0.30:
-        return 'Eukaryota'
-    
-    # STEP B: Bacterial Majority
-    # Must be strictly greater than Euk-group and Other.
-    if bac > (euk + mito + chloro) and bac > other:
-        return 'Bacteria'
-    
-    # STEP C: Other Majority
-    if other > (euk + mito + chloro) and other > bac:
-        return 'Other'
-    
-    # STEP D: TIE-BREAK / NO MAJORITY
-    # If we reached here, it failed 30% Euk and no domain is a clear winner.
-    return 'Ambiguous (Cellular Org)'
-
-contig_stats['Final_Label'] = contig_stats.apply(final_decision_hierarchy, axis=1)
-
-# 5. Merge and Normalize
-final_df = pd.merge(df_bins, contig_stats.reset_index(), left_on='contig ID', right_on='Contig_ID', how='left')
-final_df['Final_Label'] = final_df['Final_Label'].fillna('Unclassified')
-
-# 6. Sorting and Export
-def bin_sort_key(name):
-    match = re.search(r'bin\.(\d+)', str(name))
-    return (0, int(match.group(1))) if match else (1, str(name))
-
-bin_summary = final_df.groupby(['bin_name', 'Final_Label']).size().unstack(fill_value=0)
-bin_summary_norm = bin_summary.div(bin_summary.sum(axis=1), axis=0)
-bin_summary_norm = bin_summary_norm.reindex(sorted(bin_summary_norm.index, key=bin_sort_key))
-
-final_df.to_csv('contig_classification_final_priority.csv', index=False)
-
-# 7. Plotting
-color_map = {
-    'Bacteria': "#2ac92a", 'Eukaryota': "#3197fd", 
-    'Ambiguous (Cellular Org)': "#fa9734", 'Unclassified': '#999999', 'Other': "#db7a7a"
-}
-cat_order = ['Bacteria', 'Eukaryota', 'Ambiguous (Cellular Org)', 'Unclassified', 'Other']
-
-for cat in cat_order:
-    if cat not in bin_summary_norm.columns:
-        bin_summary_norm[cat] = 0.0
-bin_summary_norm = bin_summary_norm[cat_order]
-
-plt.figure(figsize=(18, 8))
-bin_summary_norm.plot(kind='bar', stacked=True, figsize=(18, 8), 
-                      color=[color_map[c] for c in cat_order], 
-                      edgecolor='white', linewidth=0.1)
-
-plt.ylim(0, 1.0)
-plt.title('Normalized Contig Distribution (Priority Hierarchy)')
-plt.legend(title='Classification', bbox_to_anchor=(1.02, 1), loc='upper left')
-plt.tight_layout()
-plt.savefig('normalized_histogram_final.png')
-
-print("Task complete. Created 'contig_classification_final_priority.csv'.")
+```bash
+python scripts/classify_metaeuk_contigs.py
 ```
 ## 7.5 Outputs
 ```text
@@ -952,160 +856,14 @@ The main parsed Bacillariophyta outputs were:
 ```
 ## 14.7.1 Swiss-Prot best-hit parsing script
 The raw Swiss-Prot DIAMOND output was parsed with a custom Python script. The script calculated query and subject coverage, extracted UniProt accession identifiers, protein names, organism names, gene names, taxon IDs, and protein evidence fields, and selected the best hit per predicted protein.
-```bash
-nano scripts/make_swissprot_best_hits.py
+The full Python script is saved in:
+
+```text
+scripts/make_swissprot_best_hits.py
 ```
-```python
-from pathlib import Path
-import re
-import pandas as pd
 
-base = Path("/work/ebg_lab/eb/diatom_consortia/functional_annotation_swissprot")
+Run the script with:
 
-diamond_file = base / "02_diamond/DL_diatom_braker4_ET_vs_swissprot.tsv"
-protein_fasta = base / "01_input/diatom_predicted_proteins.fa"
-
-outdir = base / "03_best_hits"
-outdir.mkdir(exist_ok=True)
-
-cols = [
-    "qseqid",
-    "sseqid",
-    "pident",
-    "length",
-    "qlen",
-    "slen",
-    "qstart",
-    "qend",
-    "sstart",
-    "send",
-    "evalue",
-    "bitscore",
-    "stitle",
-]
-
-df = pd.read_csv(diamond_file, sep="\t", names=cols)
-
-# Calculate alignment coverage
-df["qcov_percent"] = (df["length"] / df["qlen"]) * 100
-df["scov_percent"] = (df["length"] / df["slen"]) * 100
-
-# Parse UniProt subject ID: sp|ACCESSION|ENTRY
-def parse_uniprot_id(x):
-    parts = str(x).split("|")
-    if len(parts) >= 3:
-        return parts[0], parts[1], parts[2]
-    return "", x, ""
-
-df[["uniprot_review_status", "swissprot_accession", "swissprot_entry"]] = df["sseqid"].apply(
-    lambda x: pd.Series(parse_uniprot_id(x))
-)
-
-df["uniprot_review_status"] = df["uniprot_review_status"].replace({
-    "sp": "Swiss-Prot_reviewed",
-    "tr": "TrEMBL_unreviewed"
-})
-
-def extract_protein_name(title):
-    title = str(title)
-    title = re.sub(r"^(sp|tr)\|[^|]+\|[^\s]+\s+", "", title)
-    return re.split(r"\sOS=", title)[0]
-
-def extract_organism(title):
-    match = re.search(r"\bOS=(.*?)\sOX=", str(title))
-    return match.group(1) if match else ""
-
-def extract_taxid(title):
-    match = re.search(r"\bOX=(\d+)", str(title))
-    return match.group(1) if match else ""
-
-def extract_gene_name(title):
-    match = re.search(r"\bGN=(.*?)\sPE=", str(title))
-    return match.group(1) if match else ""
-
-def extract_pe(title):
-    match = re.search(r"\bPE=(\d+)", str(title))
-    return match.group(1) if match else ""
-
-df["swissprot_protein_name"] = df["stitle"].apply(extract_protein_name)
-df["swissprot_organism"] = df["stitle"].apply(extract_organism)
-df["swissprot_taxid"] = df["stitle"].apply(extract_taxid)
-df["swissprot_gene_name"] = df["stitle"].apply(extract_gene_name)
-df["protein_existence_PE"] = df["stitle"].apply(extract_pe)
-
-# Select best hit per query
-df_sorted = df.sort_values(
-    by=["qseqid", "evalue", "bitscore", "qcov_percent", "pident"],
-    ascending=[True, True, False, False, False],
-)
-
-best = df_sorted.drop_duplicates(subset="qseqid", keep="first").copy()
-
-def assign_confidence(row):
-    if row["evalue"] <= 1e-20 and row["qcov_percent"] >= 70 and row["pident"] >= 40:
-        return "high"
-    elif row["evalue"] <= 1e-10 and row["qcov_percent"] >= 50 and row["pident"] >= 30:
-        return "medium"
-    elif row["evalue"] <= 1e-5 and row["qcov_percent"] >= 30:
-        return "low"
-    else:
-        return "weak_domain_or_fragment"
-
-best["swissprot_hit_confidence"] = best.apply(assign_confidence, axis=1)
-
-strict = best[
-    (best["evalue"] <= 1e-10)
-    & (best["qcov_percent"] >= 50)
-    & (best["pident"] >= 30)
-].copy()
-
-# Keep all predicted proteins, including proteins without Swiss-Prot hits
-protein_ids = []
-with open(protein_fasta) as handle:
-    for line in handle:
-        if line.startswith(">"):
-            protein_ids.append(line[1:].strip().split()[0])
-
-all_proteins = pd.DataFrame({"qseqid": protein_ids})
-all_with_swissprot = all_proteins.merge(best, on="qseqid", how="left")
-
-df.to_csv(outdir / "DL_diatom_swissprot_all_hits_with_coverage.tsv", sep="\t", index=False)
-best.to_csv(outdir / "DL_diatom_swissprot_best_hits.tsv", sep="\t", index=False)
-strict.to_csv(outdir / "DL_diatom_swissprot_best_hits_strict.tsv", sep="\t", index=False)
-all_with_swissprot.to_csv(outdir / "DL_diatom_all_proteins_with_swissprot_annotation.tsv", sep="\t", index=False)
-
-n_total = len(all_proteins)
-n_all_hit_lines = len(df)
-n_hit_proteins = best["qseqid"].nunique()
-n_strict = strict["qseqid"].nunique()
-
-confidence_counts = best["swissprot_hit_confidence"].value_counts().to_string()
-
-summary = f"""Swiss-Prot annotation summary
-
-Total predicted proteins: {n_total}
-Total DIAMOND hit lines: {n_all_hit_lines}
-Proteins with at least one Swiss-Prot hit: {n_hit_proteins}
-Proteins with strict Swiss-Prot hit: {n_strict}
-
-Percent with at least one Swiss-Prot hit: {(n_hit_proteins / n_total) * 100:.2f}%
-Percent with strict Swiss-Prot hit: {(n_strict / n_total) * 100:.2f}%
-
-Strict filter:
-e-value <= 1e-10
-query coverage >= 50%
-percent identity >= 30%
-
-Confidence counts:
-{confidence_counts}
-"""
-
-with open(outdir / "DL_diatom_swissprot_annotation_summary.txt", "w") as handle:
-    handle.write(summary)
-
-print(summary)
-```
-The script was run with:
 ```bash
 conda activate swissprot_annot
 python scripts/make_swissprot_best_hits.py
@@ -1114,159 +872,14 @@ python scripts/make_swissprot_best_hits.py
 The raw DIAMOND output was not used directly because some statistically significant hits only aligned to short domains or fragments. This script calculated query coverage and assigned confidence classes so that full-length or near-full-length homologs could be separated from weaker domain-only matches. The all-protein output was retained so that proteins without Swiss-Prot hits could still be included in downstream InterProScan and expression merges.
 ## 14.7.2 Bacillariophyta best-hit parsing script
 The UniProtKB Bacillariophyta DIAMOND output was parsed using the same logic as the Swiss-Prot output. This kept the confidence framework consistent between the curated Swiss-Prot layer and the diatom-specific homolog layer.
-```bash
-nano scripts/make_bacillariophyta_best_hits.py
+The full Python script is saved in:
+
+```text
+scripts/make_bacillariophyta_best_hits.py
 ```
-```python
-from pathlib import Path
-import re
-import pandas as pd
 
-base = Path("/work/ebg_lab/eb/diatom_consortia/functional_annotation_swissprot")
+Run the script with:
 
-diamond_file = base / "02_diamond/DL_diatom_braker4_ET_vs_uniprot_bacillariophyta.tsv"
-protein_fasta = base / "01_input/diatom_predicted_proteins.fa"
-
-outdir = base / "03_best_hits"
-outdir.mkdir(exist_ok=True)
-
-cols = [
-    "qseqid",
-    "sseqid",
-    "pident",
-    "length",
-    "qlen",
-    "slen",
-    "qstart",
-    "qend",
-    "sstart",
-    "send",
-    "evalue",
-    "bitscore",
-    "stitle",
-]
-
-df = pd.read_csv(diamond_file, sep="\t", names=cols)
-
-# Calculate alignment coverage
-df["qcov_percent"] = (df["length"] / df["qlen"]) * 100
-df["scov_percent"] = (df["length"] / df["slen"]) * 100
-
-# Parse UniProt subject ID: sp|ACCESSION|ENTRY or tr|ACCESSION|ENTRY
-def parse_uniprot_id(x):
-    parts = str(x).split("|")
-    if len(parts) >= 3:
-        return parts[0], parts[1], parts[2]
-    return "", x, ""
-
-df[["uniprot_review_status", "uniprot_accession", "uniprot_entry"]] = df["sseqid"].apply(
-    lambda x: pd.Series(parse_uniprot_id(x))
-)
-
-df["uniprot_review_status"] = df["uniprot_review_status"].replace({
-    "sp": "Swiss-Prot_reviewed",
-    "tr": "TrEMBL_unreviewed"
-})
-
-def extract_protein_name(title):
-    title = str(title)
-    title = re.sub(r"^(sp|tr)\|[^|]+\|[^\s]+\s+", "", title)
-    return re.split(r"\sOS=", title)[0]
-
-def extract_organism(title):
-    match = re.search(r"\bOS=(.*?)\sOX=", str(title))
-    return match.group(1) if match else ""
-
-def extract_taxid(title):
-    match = re.search(r"\bOX=(\d+)", str(title))
-    return match.group(1) if match else ""
-
-def extract_gene_name(title):
-    match = re.search(r"\bGN=(.*?)\sPE=", str(title))
-    return match.group(1) if match else ""
-
-def extract_pe(title):
-    match = re.search(r"\bPE=(\d+)", str(title))
-    return match.group(1) if match else ""
-
-df["bacillariophyta_protein_name"] = df["stitle"].apply(extract_protein_name)
-df["bacillariophyta_organism"] = df["stitle"].apply(extract_organism)
-df["bacillariophyta_taxid"] = df["stitle"].apply(extract_taxid)
-df["bacillariophyta_gene_name"] = df["stitle"].apply(extract_gene_name)
-df["protein_existence_PE"] = df["stitle"].apply(extract_pe)
-
-# Select best hit per query
-df_sorted = df.sort_values(
-    by=["qseqid", "evalue", "bitscore", "qcov_percent", "pident"],
-    ascending=[True, True, False, False, False],
-)
-
-best = df_sorted.drop_duplicates(subset="qseqid", keep="first").copy()
-
-def assign_confidence(row):
-    if row["evalue"] <= 1e-20 and row["qcov_percent"] >= 70 and row["pident"] >= 40:
-        return "high"
-    elif row["evalue"] <= 1e-10 and row["qcov_percent"] >= 50 and row["pident"] >= 30:
-        return "medium"
-    elif row["evalue"] <= 1e-5 and row["qcov_percent"] >= 30:
-        return "low"
-    else:
-        return "weak_domain_or_fragment"
-
-best["bacillariophyta_hit_confidence"] = best.apply(assign_confidence, axis=1)
-
-strict = best[
-    (best["evalue"] <= 1e-10)
-    & (best["qcov_percent"] >= 50)
-    & (best["pident"] >= 30)
-].copy()
-
-# Keep all predicted proteins, including proteins without Bacillariophyta hits
-protein_ids = []
-with open(protein_fasta) as handle:
-    for line in handle:
-        if line.startswith(">"):
-            protein_ids.append(line[1:].strip().split()[0])
-
-all_proteins = pd.DataFrame({"qseqid": protein_ids})
-all_with_bac = all_proteins.merge(best, on="qseqid", how="left")
-
-df.to_csv(outdir / "DL_diatom_bacillariophyta_all_hits_with_coverage.tsv", sep="\t", index=False)
-best.to_csv(outdir / "DL_diatom_bacillariophyta_best_hits.tsv", sep="\t", index=False)
-strict.to_csv(outdir / "DL_diatom_bacillariophyta_best_hits_strict.tsv", sep="\t", index=False)
-all_with_bac.to_csv(outdir / "DL_diatom_all_proteins_with_bacillariophyta_annotation.tsv", sep="\t", index=False)
-
-n_total = len(all_proteins)
-n_all_hit_lines = len(df)
-n_hit_proteins = best["qseqid"].nunique()
-n_strict = strict["qseqid"].nunique()
-
-confidence_counts = best["bacillariophyta_hit_confidence"].value_counts().to_string()
-
-summary = f"""UniProtKB Bacillariophyta annotation summary
-
-Total predicted proteins: {n_total}
-Total DIAMOND hit lines: {n_all_hit_lines}
-Proteins with at least one Bacillariophyta hit: {n_hit_proteins}
-Proteins with strict Bacillariophyta hit: {n_strict}
-
-Percent with at least one Bacillariophyta hit: {(n_hit_proteins / n_total) * 100:.2f}%
-Percent with strict Bacillariophyta hit: {(n_strict / n_total) * 100:.2f}%
-
-Strict filter:
-e-value <= 1e-10
-query coverage >= 50%
-percent identity >= 30%
-
-Confidence counts:
-{confidence_counts}
-"""
-with open(outdir / "DL_diatom_bacillariophyta_annotation_summary.txt", "w") as handle:
-    handle.write(summary)
-
-print(summary)
-```
-The script was run with:
 ```bash
 conda activate swissprot_annot
 python scripts/make_bacillariophyta_best_hits.py
