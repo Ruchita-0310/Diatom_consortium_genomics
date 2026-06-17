@@ -33,9 +33,12 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Assembly quality | BUSCO, QUAST/MetaQUAST |
 | Binning and bin quality | MetaBAT2, CheckM2 |
 | Taxonomy and abundance | GTDB-Tk, MetaEuk, CoverM |
+| Organelle identification | MetaQUAST, minimap2, bedtools, seqkit, GeSeq/OGDRAW |
 | Phylogenetics | Clustal Omega, TrimAl, IQ-TREE 2 |
-| Transcriptomics | Nextflow, nf-core/metatdenovo, TransDecoder, eggNOG-mapper, Barrnap |
-| Gene annotation | STAR, BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, BUSCO/compleasm |
+| Transcriptomics | Nextflow, nf-core/metatdenovo, TransDecoder, Barrnap, STAR |
+| Genome annotation | BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, STAR, BUSCO/compleasm |
+| Functional annotation | DIAMOND, UniProtKB/Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, Pfam, PANTHER, Gene3D, CDD, SMART, SUPERFAMILY, ProSite, Python |
+| Expression integration | Python, pandas, TPM/count tables |
 | Comparative genomics | NCBI Datasets, BLASTN, bedtools, Python |
 ## Repository structure for scripts
 Custom Python scripts are stored in the `scripts/` directory rather than embedded directly in this markdown workflow.
