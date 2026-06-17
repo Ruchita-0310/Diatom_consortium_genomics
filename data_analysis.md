@@ -1176,6 +1176,7 @@ AntiFam screen completed
 
 </details>
 <summary><strong>15. Nuclear-enriched genome generation</strong> - organelle contig removal and BRAKER4 annotation filtering</summary>
+
 ### 15.1 Input files
 ```bash
 mkdir -p /work/ebg_lab/eb/diatom_consortia/nuclear_genome_filtering_18_diatom
