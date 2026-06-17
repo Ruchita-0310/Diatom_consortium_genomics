@@ -298,7 +298,7 @@ The CSV file contains the bin name, contig ID, ORF-level category counts, and fi
 </details>
 
 <details>
-<summary><strong>8. Genome coverage and relative abundance with CoverM</strong> - CoverM</summary>
+<summary><strong>8. Genome coverage and relative abundance</strong> - CoverM</summary>
 
 CoverM was used to calculate coverage and relative abundance of bacterial genome bins using paired-end short reads.
 ```bash
