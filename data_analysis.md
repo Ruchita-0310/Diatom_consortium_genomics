@@ -38,7 +38,7 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Gene annotation | STAR, BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, BUSCO/compleasm |
 | Comparative genomics | NCBI Datasets, BLASTN, bedtools, Python |
 ## Repository structure for scripts
-Custom Python scripts are stored in the `scripts/` directory rather than embedded directly in this README.
+Custom Python scripts are stored in the `scripts/` directory rather than embedded directly in this markdown workflow.
 ```text
 scripts/
 ├── classify_metaeuk_contigs.py
@@ -47,9 +47,12 @@ scripts/
 └── merge_phaeodactylum_blast_hits.py
 ```
 Each script can be run from the command line in the relevant working directory, as shown in the sections below.
+## Analysis workflow
+Click each section to expand the commands, notes, and outputs.
 
----
-# 1. Genome assembly
+<details>
+<summary><strong>1. Genome assembly</strong> - Flye metagenome assembly</summary>
+
 Long-read assembly was performed with Nanopore reads basecalled with Guppy. Flye was run in metagenome mode because the sample represented a diatom-associated microbial consortium rather than an isolate genome.
 ```bash
 flye \
@@ -63,8 +66,11 @@ flye \
 ```
 The Flye assembly was used as the starting point for read mapping, polishing, binning, organelle screening, and genome annotation.
 
----
-# 2. Read mapping and assembly support
+</details>
+
+<details>
+<summary><strong>2. Read mapping and assembly support</strong> - minimap2 and samtools</summary>
+
 Short reads were mapped to the Nanopore assembly to assess read support, coverage, and assembly quality.
 
 ```bash
@@ -91,10 +97,13 @@ awk '{sum[$1]+=$3; count[$1]++} END {for (c in sum) print c, sum[c]/count[c]}' s
 ```
 The resulting files were used to evaluate mapping rate, contig-level coverage, and short-read support across the assembly.
 
----
-# 3. Assembly polishing
+</details>
+
+<details>
+<summary><strong>3. Assembly polishing</strong> - Medaka, Polypolish, and Pypolca</summary>
+
 Assembly polishing was performed using Medaka for long-read polishing, followed by Polypolish and Pypolca for short-read correction.
-## 3.1 Long-read polishing with Medaka
+### 3.1 Long-read polishing with Medaka
 ```bash
 medaka_consensus \
     -i pass_trim.fastq.gz \
@@ -102,7 +111,7 @@ medaka_consensus \
     -o medaka_euk_polished \
     -t 12
 ```
-## 3.2 Short-read alignment for Polypolish
+### 3.2 Short-read alignment for Polypolish
 Short reads were aligned to the Medaka-polished assembly using BWA-MEM.
 ```bash
 bwa mem -t 16 -a \
@@ -115,7 +124,7 @@ bwa mem -t 16 -a \
     /work/ebg_lab/eb/diatom_consortia/sr_diatoms/Li49151-RS-Diatoms-4C_S1_R2_001.fastq.gz \
     > alignments_2.sam
 ```
-## 3.3 Polypolish filtering and polishing
+### 3.3 Polypolish filtering and polishing
 ```bash
 polypolish filter \
     --in1 alignments_1.sam \
@@ -129,7 +138,7 @@ polypolish polish \
     filtered_2.sam \
     > sr_poly.fasta
 ```
-## 3.4 Pypolca polishing
+### 3.4 Pypolca polishing
 ```bash
 pypolca run \
     -a sr_poly.fasta \
@@ -140,7 +149,7 @@ pypolca run \
     --careful
 ```
 The final corrected assembly was used for downstream binning, organelle identification, and gene annotation.
-## 3.5 BUSCO assessment of the polished assembly
+### 3.5 BUSCO assessment of the polished assembly
 ```bash
 busco \
     -i pypolca_corrected.fasta \
@@ -148,15 +157,19 @@ busco \
     -o busco_report \
     -m genome
 ```
----
-# 4. Metagenomic binning with MetaBAT2
+
+</details>
+
+<details>
+<summary><strong>4. Metagenomic binning with MetaBAT2</strong> - MetaBAT2</summary>
+
 MetaBAT2 was used to recover genome bins from the polished assembly using Nanopore read coverage.
-## 4.1 Install MetaBAT2
+### 4.1 Install MetaBAT2
 ```bash
 conda create -n metabat2_v2 -c conda-forge -c bioconda metabat2 libdeflate=1.10
 conda activate metabat2_v2
 ```
-## 4.2 Map Nanopore reads to the polished assembly
+### 4.2 Map Nanopore reads to the polished assembly
 ```bash
 minimap2 -ax map-ont -t 16 \
     1_sr_pypolca_output/pypolca_corrected.fasta \
@@ -166,14 +179,14 @@ minimap2 -ax map-ont -t 16 \
 
 samtools index -@ 16 aligned_reads.sorted.bam
 ```
-## 4.3 Generate contig depth file
+### 4.3 Generate contig depth file
 ```bash
 jgi_summarize_bam_contig_depths \
     --outputDepth depth.txt \
     --percentIdentity 85 \
     aligned_reads.sorted.bam
 ```
-## 4.4 Run MetaBAT2
+### 4.4 Run MetaBAT2
 ```bash
 mkdir -p 2_metabat2_bins
 
@@ -187,8 +200,11 @@ metabat2 \
 ```
 The resulting bins were used for quality assessment and taxonomic classification.
 
----
-# 5. Bin quality assessment with CheckM2
+</details>
+
+<details>
+<summary><strong>5. Bin quality assessment with CheckM2</strong> - CheckM2</summary>
+
 CheckM2 was used to estimate completeness and contamination of recovered genome bins.
 ```bash
 checkm2 predict \
@@ -196,8 +212,12 @@ checkm2 predict \
     --input 2_metabat2_bins/ \
     --output_directory 3_checkm2_results
 ```
----
-# 6. Taxonomic classification with GTDB-Tk
+
+</details>
+
+<details>
+<summary><strong>6. Taxonomic classification with GTDB-Tk</strong> - GTDB-Tk</summary>
+
 GTDB-Tk was used to assign bacterial and archaeal taxonomy to recovered genome bins using the Genome Taxonomy Database.
 ```bash
 gtdbtk classify_wf \
@@ -208,11 +228,14 @@ gtdbtk classify_wf \
 ```
 GTDB-Tk was used for bacterial and archaeal genome bins. Because the consortium also contained a dominant eukaryotic diatom, MetaEuk-based ORF taxonomy was used as an additional contig-level screen for eukaryotic, bacterial, ambiguous, and unclassified contig fractions.
 
----
-# 7. MetaEuk-based contig classification
+</details>
+
+<details>
+<summary><strong>7. MetaEuk-based contig classification</strong> - MetaEuk and custom Python script</summary>
+
 MetaEuk ORF-level taxonomic assignments were used to classify contigs across recovered bins. This step was added because the assembly originated from a diatom-associated microbial consortium, and bin-level bacterial taxonomy alone does not resolve eukaryotic contigs or mixed bins.
 Because MetaEuk uses last common ancestor assignments, organelle-derived sequences can be assigned to bacterial lineages. To account for this, the contig classification used a priority hierarchy that grouped direct eukaryotic hits together with mitochondrial and chloroplast-derived signatures when calculating the eukaryotic score. Mitochondrial-like hits were identified using `o_Rickettsiales` or `o__Rickettsiales`, and chloroplast-like hits were identified using `p_Cyanobacteria`.
-## 7.1 Input files
+### 7.1 Input files
 ```text
 metaeuk_output_polyp_taxonomy_tax_per_pred.tsv
 contig_to_bin.txt
@@ -223,7 +246,7 @@ The MetaEuk table was expected to contain the following columns:
 Contig_ID
 Classification
 ```
-## 7.2 ORF-level labels
+### 7.2 ORF-level labels
 Each predicted ORF was assigned to one of the following labels:
 | Label | Rule |
 |---|---|
@@ -234,7 +257,7 @@ Each predicted ORF was assigned to one of the following labels:
 | Ambiguous (Cellular Org) | `Classification` is exactly `_cellular organisms` |
 | Other | all other biological hits, including Archaea or viruses |
 | Unclassified | no MetaEuk classification available |
-## 7.3 Final contig-level priority hierarchy
+### 7.3 Final contig-level priority hierarchy
 For each contig, ORF-level labels were counted and assigned using a priority hierarchy.
 First, the 30% eukaryotic/organelle rule was applied. A contig was classified as `Eukaryota` if more than 30% of its biological ORF assignments were eukaryotic, mitochondrial, or chloroplast-derived:
 ```text
@@ -253,7 +276,7 @@ Ambiguous = no group has a strict majority, including tied or unresolved cases
 Unclassified = no biological MetaEuk hits are detected
 ```
 Thus, contigs that fail the 30% rule and do not have a single strictly dominant biological category are labeled `Ambiguous (Cellular Org)`.
-## 7.4 Python script
+### 7.4 Python script
 The full Python script is saved in:
 
 ```text
@@ -265,15 +288,18 @@ Run the script from the directory containing `metaeuk_output_polyp_taxonomy_tax_
 ```bash
 python scripts/classify_metaeuk_contigs.py
 ```
-## 7.5 Outputs
+### 7.5 Outputs
 ```text
 contig_classification_final_priority.csv
 normalized_histogram_final.png
 ```
 The CSV file contains the bin name, contig ID, ORF-level category counts, and final contig classification. The stacked bar plot summarizes the normalized proportion of bacterial, eukaryotic, ambiguous, unclassified, and other contigs per bin.
 
----
-# 8. Genome coverage and relative abundance with CoverM
+</details>
+
+<details>
+<summary><strong>8. Genome coverage and relative abundance with CoverM</strong> - CoverM</summary>
+
 CoverM was used to calculate coverage and relative abundance of bacterial genome bins using paired-end short reads.
 ```bash
 conda create -n coverm -c bioconda -c conda-forge coverm
@@ -293,8 +319,11 @@ coverm genome \
 ```
 The output table contained mean coverage, relative abundance, and covered fraction for each bacterial bin.
 
----
-# 9. 18S rRNA phylogenetic analysis
+</details>
+
+<details>
+<summary><strong>9. 18S rRNA phylogenetic analysis</strong> - Clustal Omega, TrimAl, and IQ-TREE 2</summary>
+
 A phylogenetic tree was generated from 18S rRNA sequences using Clustal Omega, TrimAl, and IQ-TREE 2.
 ```bash
 cat *.fasta > 18S_new.fasta
@@ -317,10 +346,13 @@ trimal \
 ```
 The best-fit model was selected by IQ-TREE using ModelFinder, and branch support was estimated using ultrafast bootstrap and SH-aLRT support values.
 
----
-# 10. Transcriptome analysis
+</details>
+
+<details>
+<summary><strong>10. Transcriptome analysis</strong> - nf-core/metatdenovo</summary>
+
 Transcriptome assembly and annotation were performed using the nf-core/metatdenovo workflow.
-## 10.1 Java setup
+### 10.1 Java setup
 ```bash
 module purge
 module load java/openjdk-23.0.1
@@ -328,7 +360,7 @@ module load java/openjdk-23.0.1
 export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
 export PATH=$JAVA_HOME/bin:$PATH
 ```
-## 10.2 nf-core/metatdenovo execution
+### 10.2 nf-core/metatdenovo execution
 ```bash
 ~/nextflow run nf-core/metatdenovo \
     -profile singularity \
@@ -348,8 +380,11 @@ export PATH=$JAVA_HOME/bin:$PATH
 ```
 The workflow generated transcript assemblies, predicted ORFs, functional annotations, and taxonomic classifications.
 
----
-# 11. rRNA gene identification from transcriptome assemblies
+</details>
+
+<details>
+<summary><strong>11. rRNA gene identification from transcriptome assemblies</strong> - Barrnap</summary>
+
 Barrnap was used to identify eukaryotic, bacterial, and mitochondrial rRNA genes from the assembled transcriptome.
 ```bash
 barrnap \
@@ -373,8 +408,11 @@ barrnap \
 ```
 The resulting FASTA and GFF files were used to identify eukaryotic, bacterial, and mitochondrial rRNA transcripts.
 
----
-# 12. Organelle genome identification
+</details>
+
+<details>
+<summary><strong>12. Organelle genome identification</strong> - MetaQUAST</summary>
+
 Organelle contigs were identified by comparing the polished assembly against reference mitochondrial and chloroplast genomes.
 ```text
 Mitogenome reference:   MT742552
@@ -399,8 +437,11 @@ metaquast.py \
 ```
 The MetaQUAST output was used to identify candidate chloroplast and mitochondrial contigs for downstream organelle genome refinement and annotation.
 
----
-# 13. Diatom genome annotation with BRAKER4 ET mode
+</details>
+
+<details>
+<summary><strong>13. Diatom genome annotation with BRAKER4 ET mode</strong> - BRAKER4 ET mode</summary>
+
 Gene models were generated with BRAKER4 using a diatom genome assembly and RNA-seq evidence. The genome was not soft-masked before annotation; therefore, repeat masking was performed internally within the BRAKER4 workflow using RepeatModeler, RepeatMasker, and TRF. The final accepted run used ET mode, meaning that gene prediction was based on RNA-seq evidence only.
 ```text
 Genome FASTA
@@ -423,7 +464,7 @@ TSEBRA refinement
    ↓
 Final gene models, proteins, CDS, and BUSCO assessment
 ```
-## 13.1 BRAKER4 setup
+### 13.1 BRAKER4 setup
 ```bash
 git clone https://github.com/Gaius-Augustus/BRAKER4.git
 cd BRAKER4
@@ -438,7 +479,7 @@ GeneMark requires a license key. The key was stored at:
 ```bash
 /home/ruchita.solanki/.gm_key
 ```
-## 13.2 STAR RNA-seq alignment evidence
+### 13.2 STAR RNA-seq alignment evidence
 RNA-seq reads were aligned to the genome using STAR. BRAKER4 was supplied with a precomputed coordinate-sorted BAM file rather than raw RNA-seq FASTQ files.
 ```bash
 STAR \
@@ -463,7 +504,7 @@ The BAM file was indexed before BRAKER4 execution.
 ```bash
 samtools index /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam
 ```
-## 13.3 Genome input and repeat masking
+### 13.3 Genome input and repeat masking
 The genome assembly used for STAR indexing and BRAKER4 was:
 ```bash
 /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta
@@ -482,7 +523,7 @@ Output:
 not soft-masked
 ```
 Because the genome was not pre-masked, the `genome_masked` column in `samples.csv` was left empty and internal repeat masking was enabled in `config.ini`.
-## 13.4 BRAKER4 sample file
+### 13.4 BRAKER4 sample file
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4
 nano samples.csv
@@ -500,7 +541,7 @@ Expected output:
 1 13
 2 13
 ```
-## 13.5 BRAKER4 configuration
+### 13.5 BRAKER4 configuration
 ```bash
 nano config.ini
 ```
@@ -530,7 +571,7 @@ run_red = True
 mode = et
 ```
 `run_red = True` enabled internal repeat masking, and `mode = et` selected the RNA-seq-only BRAKER4 ET workflow.
-## 13.6 Snakemake dry run
+### 13.6 Snakemake dry run
 ```bash
 snakemake \
     -s Snakefile \
@@ -554,7 +595,7 @@ busco_proteins
 collect_results
 ```
 The presence of `run_genemark_et` and absence of `run_genemark_etp` confirmed that BRAKER4 was configured in ET mode.
-## 13.7 BRAKER4 execution
+### 13.7 BRAKER4 execution
 ```bash
 snakemake \
     -s Snakefile \
@@ -567,7 +608,7 @@ snakemake \
 ```
 BRAKER4 performed internal repeat masking, StringTie transcript reconstruction, RNA-seq hint generation, GeneMark-ET training and prediction, AUGUSTUS training and prediction, evidence integration, TSEBRA refinement, BUSCO assessment, and final result collection.
 The ET-mode run produced 9,000 StringTie transcripts and 19,114 intron hints from the RNA-seq BAM file. These hints were used during GeneMark-ET and AUGUSTUS prediction.
-## 13.8 Final BRAKER4 outputs
+### 13.8 Final BRAKER4 outputs
 Final outputs were collected into:
 ```bash
 /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET
@@ -595,7 +636,7 @@ gunzip -c DL_diatom.braker4.ET.proteins.faa.gz > DL_diatom.braker4.ET.proteins.f
 gunzip -c DL_diatom.braker4.ET.cds.fna.gz > DL_diatom.braker4.ET.cds.fna
 ```
 No additional TSEBRA run was required because TSEBRA refinement was included within BRAKER4.
-## 13.9 Annotation statistics
+### 13.9 Annotation statistics
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET
 
@@ -623,7 +664,7 @@ Predicted proteins were checked for internal stop codons.
 grep -n "\*" DL_diatom.braker4.ET.proteins.faa | head
 ```
 No internal stop codons were detected.
-## 13.10 BUSCO assessment of the final protein set
+### 13.10 BUSCO assessment of the final protein set
 ```bash
 busco \
     -i DL_diatom.braker4.ET.proteins.faa \
@@ -638,7 +679,7 @@ The final predicted protein set produced the following BUSCO result using `stram
 ```text
 C:84.8%[S:81.1%,D:3.7%],F:1.9%,M:13.3%,n=697
 ```
-## 13.11 Annotation acceptance
+### 13.11 Annotation acceptance
 The final BRAKER4 ET annotation was accepted for downstream analysis because it produced a plausible gene set for the diatom genome assembly, showed no internal stop codon issues in the predicted protein FASTA, and recovered 84.8% of the `stramenopiles_odb12` BUSCO protein set with low duplication.
 Final accepted annotation files:
 ```text
@@ -647,7 +688,7 @@ DL_diatom.braker4.ET.gtf
 DL_diatom.braker4.ET.proteins.faa
 DL_diatom.braker4.ET.cds.fna
 ```
-## 13.12 Rationale for ET mode instead of ETP
+### 13.12 Rationale for ET mode instead of ETP
 BRAKER4 was initially tested in ETP mode, which combines RNA-seq evidence with protein evidence. However, GeneMark-ETP failed during model training. Although protein-supported alignments were generated, the GeneMark-ETP training set did not produce valid gene and transcript models. The failed run reported zero parsed genes and transcripts, CDS-only training entries, phase-distribution errors, and division-by-zero errors in the GeneMark-ETP scripts.
 ```text
 genes: 0
@@ -662,8 +703,11 @@ ERROR: GeneMark-ETP failed, no genemark.gtf
 ```
 Because GeneMark-ETP did not complete successfully, the annotation was rerun in ET mode using RNA-seq evidence only. This avoided the failed protein-dependent GeneMark-ETP training step while retaining transcript evidence from the coordinate-sorted STAR BAM file. The final successful workflow used GeneMark-ET, AUGUSTUS, and TSEBRA, with `protein_fasta` left empty in `samples.csv` and `mode = et` specified in `config.ini`.
 
----
-# 14. Functional annotation of BRAKER4-predicted proteins
+</details>
+
+<details>
+<summary><strong>14. Functional annotation of BRAKER4-predicted proteins</strong> - DIAMOND, Swiss-Prot, Bacillariophyta, and InterProScan</summary>
+
 After accepting the BRAKER4 ET annotation, the predicted protein set was used for downstream functional annotation. The final annotation strategy was designed specifically for a eukaryotic diatom genome rather than a prokaryote-centered metagenomic annotation workflow. For this reason, the workflow used three complementary annotation layers: curated Swiss-Prot homology, diatom-focused UniProtKB Bacillariophyta homology, and InterProScan domain/family annotation.
 The final BRAKER4 ET protein file was used as the main input:
 ```bash
@@ -685,16 +729,16 @@ The BRAKER4 protein file was linked into the working directory:
 ln -sfn /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.proteins.faa \
     01_input/diatom_predicted_proteins.fa
 ```
-## 14.1 Logic of the annotation strategy
+### 14.1 Logic of the annotation strategy
 The annotation workflow used multiple evidence layers because no single database provides complete and fully reliable functional annotation for a non-model diatom genome. Swiss-Prot was used as the conservative curated layer because its entries are manually reviewed, but it is expected to annotate fewer proteins because it is smaller and not diatom-rich. A UniProtKB Bacillariophyta database was added to improve diatom-specific homolog detection, while InterProScan was used to identify conserved domains, protein families, GO terms, and pathway signatures.
 eggNOG, KEGG, COG, and dbCAN were not used in the final workflow. eggNOG, KEGG, and COG were avoided because the objective was a eukaryote- and diatom-focused annotation rather than broad prokaryotic orthology assignment. dbCAN was not included because specialized carbohydrate-active enzyme classification was not the central objective of this analysis.
-## 14.2 Software environment for DIAMOND annotation
+### 14.2 Software environment for DIAMOND annotation
 A conda environment was used for DIAMOND searches and parsing:
 ```bash
 conda create -n swissprot_annot -c conda-forge -c bioconda diamond pandas seqkit wget pigz -y
 conda activate swissprot_annot
 ```
-## 14.3 Swiss-Prot database setup
+### 14.3 Swiss-Prot database setup
 Swiss-Prot was downloaded and stored in the home directory to avoid filling the project working directory:
 ```bash
 mkdir -p $HOME/databases/swissprot/raw
@@ -719,7 +763,7 @@ The database directory was linked into the project:
 ```bash
 ln -sfn $HOME/databases/swissprot 00_databases/swissprot_home
 ```
-## 14.4 DIAMOND search against Swiss-Prot
+### 14.4 DIAMOND search against Swiss-Prot
 Predicted proteins were searched against Swiss-Prot using DIAMOND BLASTP:
 ```bash
 diamond blastp \
@@ -733,7 +777,7 @@ diamond blastp \
     --threads 32
 ```
 The Swiss-Prot search was used to assign conservative protein names where strong curated homologs were available. The `--sensitive` setting was used to improve detection of more distant homologs, while `--evalue 1e-5` retained candidate hits for downstream filtering. Up to five hits per query were retained so that the best hit could later be selected after calculating coverage and confidence metrics.
-### Swiss-Prot result summary
+#### Swiss-Prot result summary
 ```text
 Total predicted proteins: 16,947
 Total DIAMOND hit lines: 36,669
@@ -750,7 +794,7 @@ Medium:                  2,247
 Low:                     2,826
 Weak domain or fragment:   968
 ```
-## 14.5 UniProtKB Bacillariophyta database setup
+### 14.5 UniProtKB Bacillariophyta database setup
 A diatom-focused UniProtKB database was created using the Bacillariophyta taxonomic group. The database was stored in the home directory:
 ```bash
 mkdir -p $HOME/databases/uniprot_bacillariophyta/raw
@@ -772,7 +816,7 @@ The database was linked into the project:
 ```bash
 ln -sfn $HOME/databases/uniprot_bacillariophyta 00_databases/uniprot_bacillariophyta_home
 ```
-## 14.6 DIAMOND search against UniProtKB Bacillariophyta
+### 14.6 DIAMOND search against UniProtKB Bacillariophyta
 Predicted proteins were searched against the Bacillariophyta database using DIAMOND BLASTP:
 ```bash
 diamond blastp \
@@ -785,7 +829,7 @@ diamond blastp \
     --sensitive \
     --threads 32
 ```
-### Bacillariophyta result summary
+#### Bacillariophyta result summary
 ```text
 Total predicted proteins: 16,947
 Total DIAMOND hit lines: 65,416
@@ -801,7 +845,7 @@ Medium:                   2,737
 Low:                      1,668
 Weak domain or fragment:    612
 ```
-## 14.7 Best-hit parsing and confidence filtering
+### 14.7 Best-hit parsing and confidence filtering
 Raw DIAMOND outputs were parsed into best-hit tables. For each predicted protein, query coverage and subject coverage were calculated, UniProt identifiers were parsed, and protein name, organism, gene name, taxon ID, and protein evidence fields were extracted from the hit title.
 The best hit per query was selected using:
 ```text
@@ -851,7 +895,7 @@ The main parsed Bacillariophyta outputs were:
 03_best_hits/DL_diatom_all_proteins_with_bacillariophyta_annotation.tsv
 03_best_hits/DL_diatom_bacillariophyta_annotation_summary.txt
 ```
-## 14.7.1 Swiss-Prot best-hit parsing script
+### 14.7.1 Swiss-Prot best-hit parsing script
 The raw Swiss-Prot DIAMOND output was parsed with a custom Python script. The script calculated query and subject coverage, extracted UniProt accession identifiers, protein names, organism names, gene names, taxon IDs, and protein evidence fields, and selected the best hit per predicted protein.
 The full Python script is saved in:
 
@@ -865,9 +909,9 @@ Run the script with:
 conda activate swissprot_annot
 python scripts/make_swissprot_best_hits.py
 ```
-### Logic
+#### Logic
 The raw DIAMOND output was not used directly because some statistically significant hits only aligned to short domains or fragments. This script calculated query coverage and assigned confidence classes so that full-length or near-full-length homologs could be separated from weaker domain-only matches. The all-protein output was retained so that proteins without Swiss-Prot hits could still be included in downstream InterProScan and expression merges.
-## 14.7.2 Bacillariophyta best-hit parsing script
+### 14.7.2 Bacillariophyta best-hit parsing script
 The UniProtKB Bacillariophyta DIAMOND output was parsed using the same logic as the Swiss-Prot output. This kept the confidence framework consistent between the curated Swiss-Prot layer and the diatom-specific homolog layer.
 The full Python script is saved in:
 
@@ -881,9 +925,9 @@ Run the script with:
 conda activate swissprot_annot
 python scripts/make_bacillariophyta_best_hits.py
 ```
-### Logic
+#### Logic
 The Bacillariophyta database increased diatom-specific homolog detection, but many entries are unreviewed. Therefore, hits were filtered and ranked using the same e-value, coverage, and identity criteria used for Swiss-Prot. This allowed the Bacillariophyta output to be used as a homolog-support layer rather than as an unfiltered functional naming source.
-## 14.8 InterProScan setup and annotation
+### 14.8 InterProScan setup and annotation
 InterProScan was installed in the home tools directory and linked into the project:
 ```bash
 ln -sfn $HOME/tools/interproscan/current 00_databases/interproscan_home
@@ -905,7 +949,7 @@ The full BRAKER4 ET protein set was submitted to InterProScan:
     -o 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
 ```
 After completion, the raw InterProScan TSV will be summarized to one row per protein before merging with the Swiss-Prot and Bacillariophyta best-hit tables.
-## 14.9 Planned merged annotation table
+### 14.9 Planned merged annotation table
 After InterProScan finishes, the following files will be merged:
 ```text
 03_best_hits/DL_diatom_all_proteins_with_swissprot_annotation.tsv
@@ -934,7 +978,7 @@ InterPro descriptions
 GO terms
 pathway annotations
 ```
-## 14.10 Expression integration
+### 14.10 Expression integration
 Expression estimates will be merged with the final annotation table after the annotation layers are combined. Expression values may be generated at the gene or transcript level using the BRAKER4 GTF and the STAR-aligned RNA-seq BAM file.
 Gene-level counts can be generated with featureCounts:
 ```bash
@@ -957,7 +1001,7 @@ stringtie \
     -p 24 \
     -o DL_diatom.braker4.ET.stringtie.gtf
 ```
-### Logic
+#### Logic
 Expression integration links predicted function to transcriptional activity. This allows the analysis to distinguish genes that are merely present in the genome from genes that are expressed under the sampled condition. The final expression-integrated annotation table will be used to summarize expressed functions across major diatom biological categories, including photosynthesis, carbon concentrating mechanisms, silica and frustule-associated proteins, nitrogen assimilation, lipid metabolism, vitamin and cofactor metabolism, oxidative stress response, organelle-associated functions, transport, and eukaryotic cellular processes.
 The final expression-integrated table will include:
 ```text
@@ -971,7 +1015,7 @@ TPM or count values
 mean expression
 functional category
 ```
-## 14.11 Current status of functional annotation
+### 14.11 Current status of functional annotation
 Completed:
 ```text
 Swiss-Prot database download and DIAMOND database construction
@@ -991,15 +1035,19 @@ merged master functional annotation table
 expression integration
 manual functional category assignment
 ```
----
-# 15. Nuclear-enriched genome generation
+
+</details>
+
+<details>
+<summary><strong>15. Nuclear-enriched genome generation</strong> - organelle contig removal</summary>
+
 After BRAKER4 ET annotation, the genome assembly used for annotation was filtered to define a nuclear-enriched diatom genome. This step was performed after annotation because BRAKER4 had already been run on the broader diatom genome assembly, `18_diatom.fasta`.
 The working definition was:
 ```text
 nuclear-enriched genome = 18_diatom.fasta - chloroplast-like contigs - mitochondrial-like contigs
 ```
 No BLAST-based taxonomic contaminant filtering was performed during this step. Filtering was limited to removing contigs with strong similarity to the recovered chloroplast and mitochondrial genomes.
-## 15.1 Input files
+### 15.1 Input files
 ```bash
 mkdir -p /work/ebg_lab/eb/diatom_consortia/nuclear_genome_filtering_18_diatom
 cd /work/ebg_lab/eb/diatom_consortia/nuclear_genome_filtering_18_diatom
@@ -1017,13 +1065,13 @@ seqkit stats $WHOLE $CHLORO $MITO
 chloroplast_contig_1443_trimmed.fasta           1 contig       120,429 bp
 diatom_candidate_mitochondrion_2contigs.fasta    2 contigs      104,526 bp
 ```
-## 15.2 Combine organelle references
+### 15.2 Combine organelle references
 ```bash
 cat $CHLORO $MITO > organelles_chloro_mito.fasta
 seqkit stats organelles_chloro_mito.fasta
 ```
 The combined organelle reference contained three sequences with a total length of 224,955 bp.
-## 15.3 Align the genome against organelle references
+### 15.3 Align the genome against organelle references
 ```bash
 minimap2 -x asm5 -c \
     organelles_chloro_mito.fasta \
@@ -1031,7 +1079,7 @@ minimap2 -x asm5 -c \
     > whole_vs_organelles.paf
 ```
 The PAF output was used to identify regions of `18_diatom.fasta` with similarity to the chloroplast or mitochondrial genomes.
-## 15.4 Calculate organelle-aligned coverage per contig
+### 15.4 Calculate organelle-aligned coverage per contig
 ```bash
 awk 'BEGIN{OFS="\t"} {print $1, $3, $4}' whole_vs_organelles.paf \
     > whole_vs_organelles.query_intervals.bed
@@ -1061,7 +1109,7 @@ FNR==NR {len[$1]=$2; next}
 
 sort -k4,4nr organelle_coverage_per_contig.tsv | head -n 50
 ```
-## 15.5 Remove organelle-like contigs
+### 15.5 Remove organelle-like contigs
 Contigs were classified as organelle-like if at least 70% of the contig length aligned to the chloroplast or mitochondrial reference.
 ```bash
 awk '$4 >= 70 {print $1}' organelle_coverage_per_contig.tsv \
@@ -1095,7 +1143,7 @@ organelles_chloro_mito.fasta                3 contigs      224,955 bp
 18_diatom_nuclear_enriched.v1.fasta     3,007 contigs   81,911,772 bp
 ```
 Three organelle-like contigs were removed, corresponding to 260,454 bp or 0.317% of the `18_diatom.fasta` assembly.
-## 15.6 Filter BRAKER4 annotation to nuclear contigs
+### 15.6 Filter BRAKER4 annotation to nuclear contigs
 BRAKER4 was not rerun after organelle filtering because only three organelle-like contigs were removed from the BRAKER4 input assembly. Instead, the existing BRAKER4 annotation was filtered to retain only features located on contigs present in the nuclear-enriched genome.
 ```bash
 seqkit seq -n 18_diatom_nuclear_enriched.v1.fasta > nuclear_contigs.v1.txt
@@ -1125,10 +1173,14 @@ Final nuclear genome files:
 18_diatom_nuclear_enriched.v1.fasta
 braker.18_diatom_nuclear_only.v1.gff3
 ```
----
-# 16. Pairwise genome comparison with *Phaeodactylum tricornutum*
+
+</details>
+
+<details>
+<summary><strong>16. Pairwise genome comparison with <em>Phaeodactylum tricornutum</em></strong> - BLASTN and bedtools</summary>
+
 A pairwise genome comparison was performed between the updated nuclear-enriched diatom genome and the reference genome of *Phaeodactylum tricornutum*. This analysis was used as a nucleotide-level similarity screen and was not intended to define complete gene orthology. Protein-level comparison using BLASTP, DIAMOND, or OrthoFinder is recommended for a more complete assessment of conserved gene content.
-## 16.1 Input files and working directory
+### 16.1 Input files and working directory
 ```bash
 MY_GENOME=/work/ebg_lab/eb/diatom_consortia/nuclear_genome_filtering_18_diatom/18_diatom_nuclear_enriched.v1.fasta
 MY_GFF=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.gff3
@@ -1138,7 +1190,7 @@ cd /work/ebg_lab/eb/diatom_consortia/phaeodactylum_blast_18_diatom_v1
 
 mkdir -p blast_out blast_db phaeodactylum
 ```
-## 16.2 Filter BRAKER4 GFF3 to nuclear contigs
+### 16.2 Filter BRAKER4 GFF3 to nuclear contigs
 ```bash
 seqkit seq -n $MY_GENOME > nuclear_contigs.v1.txt
 
@@ -1161,7 +1213,7 @@ Full BRAKER4 genes:              15102
 Nuclear-filtered BRAKER4 genes:  15048
 ```
 Thus, 54 gene models located on removed organelle-like contigs were excluded from the nuclear gene set.
-## 16.3 Convert nuclear gene models to BED
+### 16.3 Convert nuclear gene models to BED
 ```bash
 MY_NUCLEAR_GFF=braker.18_diatom_nuclear_only.v1.gff3
 awk -F'\t' 'BEGIN{OFS="\t"}
@@ -1177,7 +1229,7 @@ The resulting BED file contained 15,048 nuclear gene models.
 ```bash
 wc -l blast_out/18_diatom_nuclear_v1_genes.bed
 ```
-## 16.4 Download the *Phaeodactylum tricornutum* reference genome
+### 16.4 Download the *Phaeodactylum tricornutum* reference genome
 ```bash
 datasets download genome accession GCF_000150955.2 \
     --include genome,gff3 \
@@ -1191,7 +1243,7 @@ PT_GFF=$(find phaeodactylum -name "*.gff" -o -name "*.gff3" | head -n 1)
 echo $PT_GENOME
 echo $PT_GFF
 ```
-## 16.5 Build the BLAST database
+### 16.5 Build the BLAST database
 ```bash
 makeblastdb \
     -in $PT_GENOME \
@@ -1201,7 +1253,7 @@ makeblastdb \
 
 PT_DB=blast_db/Phaeodactylum_tricornutum
 ```
-## 16.6 Run genome-vs-genome BLASTN
+### 16.6 Run genome-vs-genome BLASTN
 ```bash
 blastn \
     -query $MY_GENOME \
@@ -1216,7 +1268,7 @@ The raw BLASTN output contained 34,991 alignments.
 ```bash
 wc -l blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.blastn.tsv
 ```
-## 16.7 Filter BLASTN alignments
+### 16.7 Filter BLASTN alignments
 Alignments were filtered using the following thresholds:
 ```text
 Percent identity:  ≥70%
@@ -1232,7 +1284,7 @@ This produced 4,895 filtered BLASTN alignments.
 ```bash
 wc -l blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv
 ```
-## 16.8 Identify diatom genes overlapping *Phaeodactylum*-like regions
+### 16.8 Identify diatom genes overlapping *Phaeodactylum*-like regions
 Filtered BLASTN hits were converted to BED format using coordinates on the updated nuclear-enriched diatom genome.
 ```bash
 awk 'BEGIN{OFS="\t"} {
@@ -1277,7 +1329,7 @@ Total nuclear genes: 15048
 Genes with Phaeodactylum-like BLAST hits: 1492
 Percent: 9.91494%
 ```
-## 16.9 Select the best BLASTN hit per diatom gene
+### 16.9 Select the best BLASTN hit per diatom gene
 ```bash
 sort -k4,4 -k11,11nr blast_out/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv \
     | awk 'BEGIN{OFS="\t"} !seen[$4]++' \
@@ -1302,7 +1354,7 @@ Number of best-hit genes: 1492
 Mean percent identity: 72.9402
 Mean alignment length: 596.025
 ```
-## 16.10 Create final interpreted BLAST table
+### 16.10 Create final interpreted BLAST table
 A simplified best-hit table was generated.
 ```bash
 awk 'BEGIN{FS=OFS="\t";
@@ -1397,7 +1449,7 @@ NR==1 {print; next}
   tail -n +2 blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.with_PT_genes.cleanIDs.tsv
 } > blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.with_PT_genes.cleanIDs.fixed.tsv
 ```
-## 16.11 Final comparative-genomics outputs
+### 16.11 Final comparative-genomics outputs
 ```text
 blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.blastn.tsv
 blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv
@@ -1407,7 +1459,9 @@ blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.clean.tsv
 blast_out/blast_hit_to_phaeodactylum_gene.tsv
 blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.with_PT_genes.cleanIDs.fixed.tsv
 ```
-## 16.12 Summary
+### 16.12 Summary
 Pairwise BLASTN comparison between the updated nuclear-enriched diatom genome and the *Phaeodactylum tricornutum* reference genome identified 4,895 filtered nucleotide alignments using thresholds of ≥70% identity, alignment length ≥200 bp, and e-value ≤1e-10. These alignments overlapped 1,492 of 15,048 predicted nuclear genes, corresponding to 9.91% of the nuclear gene set. For the best hit per gene, the mean nucleotide identity was 72.94%, and the mean alignment length was 596 bp.
 The best-hit regions were further mapped to annotated *P. tricornutum* PHATRDRAFT gene models. Of the 1,492 best-hit diatom genes, 1,446 overlapped annotated *P. tricornutum* gene models, representing 1,314 unique PHATRDRAFT genes.
 This analysis provides a conservative nucleotide-level comparison between the candidate diatom genome and *P. tricornutum*. Because nucleotide similarity can be lost despite conservation at the protein level, this result should be treated as a genome-level similarity screen rather than a full orthology analysis.
+
+</details>
