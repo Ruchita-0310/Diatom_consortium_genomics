@@ -762,31 +762,268 @@ ERROR: GeneMark-ETP failed, no genemark.gtf
 Because GeneMark-ETP did not complete successfully, the annotation was rerun in ET mode using RNA-seq evidence only. This avoided the failed protein-dependent GeneMark-ETP training step while retaining transcript evidence from the coordinate-sorted STAR BAM file. The final successful workflow used GeneMark-ET, AUGUSTUS, and TSEBRA, with `protein_fasta` left empty in `samples.csv` and `mode = et` specified in `config.ini`.
 
 ---
-# 14. Functional annotation and expression quantification
-After accepting the BRAKER4 ET annotation, the predicted protein set was used for downstream functional annotation.
-## 14.1 eggNOG-mapper annotation
+# 14. Functional annotation of BRAKER4-predicted proteins
+After accepting the BRAKER4 ET annotation, the predicted protein set was used for downstream functional annotation. The final annotation strategy was designed specifically for a eukaryotic diatom genome rather than a prokaryote-centered metagenomic annotation workflow. For this reason, the workflow used three complementary annotation layers: curated Swiss-Prot homology, diatom-focused UniProtKB Bacillariophyta homology, and InterProScan domain/family annotation.
+The final BRAKER4 ET protein file was used as the main input:
 ```bash
-cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET
-mkdir -p functional_annotation/eggnog
-
-emapper.py \
-    -i DL_diatom.braker4.ET.proteins.faa \
-    --itype proteins \
-    -m diamond \
-    --cpu 24 \
-    -o DL_diatom_braker4_ET \
-    --output_dir functional_annotation/eggnog
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.proteins.faa
 ```
-Additional annotation approaches may include:
+The protein set contained:
 ```text
-InterProScan
-DIAMOND/BLASTP against UniProt or Swiss-Prot
-KEGG/KO annotation
-Pfam domain annotation
+16,947 predicted proteins
 ```
-Functional annotation was focused on pathways relevant to the diatom-dominated consortium, including photosynthesis, carbon-concentrating mechanisms, silica and frustule formation, nitrogen assimilation, lipid metabolism, vitamin and cofactor metabolism, oxidative stress responses, motility, and extracellular polymeric substance production.
-## 14.2 Expression quantification
-Gene-level counts can be generated with featureCounts.
+A new functional annotation working directory was created:
+```bash
+mkdir -p /work/ebg_lab/eb/diatom_consortia/functional_annotation_swissprot
+cd /work/ebg_lab/eb/diatom_consortia/functional_annotation_swissprot
+
+mkdir -p 00_databases 01_input 02_diamond 03_best_hits 05_interproscan 06_combined_annotation logs scripts slurm
+```
+The BRAKER4 protein file was linked into the working directory:
+```bash
+ln -sfn /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.proteins.faa \
+    01_input/diatom_predicted_proteins.fa
+```
+## 14.1 Logic of the annotation strategy
+The annotation workflow used multiple evidence layers because no single database provides complete and fully reliable functional annotation for a non-model diatom genome. Swiss-Prot was used as the conservative curated layer because its entries are manually reviewed, but it is expected to annotate fewer proteins because it is smaller and not diatom-rich. A UniProtKB Bacillariophyta database was added to improve diatom-specific homolog detection, while InterProScan was used to identify conserved domains, protein families, GO terms, and pathway signatures.
+eggNOG, KEGG, COG, and dbCAN were not used in the final workflow. eggNOG, KEGG, and COG were avoided because the objective was a eukaryote- and diatom-focused annotation rather than broad prokaryotic orthology assignment. dbCAN was not included because specialized carbohydrate-active enzyme classification was not the central objective of this analysis.
+## 14.2 Software environment for DIAMOND annotation
+A conda environment was used for DIAMOND searches and parsing:
+```bash
+conda create -n swissprot_annot -c conda-forge -c bioconda diamond pandas seqkit wget pigz -y
+conda activate swissprot_annot
+```
+### Logic
+DIAMOND was selected because it provides fast protein sequence similarity searches against large protein databases. The output was generated in tabular format so that hit quality, query coverage, subject coverage, accession identifiers, organism names, and protein names could be parsed reproducibly. The same search settings were used for Swiss-Prot and Bacillariophyta so that results from the two homology layers could be compared directly.
+## 14.3 Swiss-Prot database setup
+Swiss-Prot was downloaded and stored in the home directory to avoid filling the project working directory:
+```bash
+mkdir -p $HOME/databases/swissprot/raw
+mkdir -p $HOME/databases/swissprot/diamond
+```
+The downloaded Swiss-Prot release was:
+
+```text
+UniProtKB/Swiss-Prot Release 2026_02 of 10-Jun-2026
+```
+The database contained:
+```text
+575,503 reviewed protein sequences
+```
+A DIAMOND database was built:
+```bash
+diamond makedb \
+    --in $HOME/databases/swissprot/raw/uniprot_sprot.fasta.gz \
+    --db $HOME/databases/swissprot/diamond/uniprot_sprot.dmnd
+```
+The database directory was linked into the project:
+```bash
+ln -sfn $HOME/databases/swissprot 00_databases/swissprot_home
+```
+### Logic
+Swiss-Prot was used as the highest-confidence functional naming layer because it contains manually reviewed protein entries. Hits to Swiss-Prot were treated as conservative annotations, especially when they had strong e-values, good query coverage, and reasonable percent identity. However, because Swiss-Prot is relatively small and contains limited representation from many non-model diatoms, it was not expected to annotate the full predicted protein set.
+## 14.4 DIAMOND search against Swiss-Prot
+Predicted proteins were searched against Swiss-Prot using DIAMOND BLASTP:
+```bash
+diamond blastp \
+    --query 01_input/diatom_predicted_proteins.fa \
+    --db 00_databases/swissprot_home/diamond/uniprot_sprot.dmnd \
+    --out 02_diamond/DL_diatom_braker4_ET_vs_swissprot.tsv \
+    --outfmt 6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore stitle \
+    --evalue 1e-5 \
+    --max-target-seqs 5 \
+    --sensitive \
+    --threads 32
+```
+The Swiss-Prot search was used to assign conservative protein names where strong curated homologs were available. The `--sensitive` setting was used to improve detection of more distant homologs, while `--evalue 1e-5` retained candidate hits for downstream filtering. Up to five hits per query were retained so that the best hit could later be selected after calculating coverage and confidence metrics.
+### Swiss-Prot result summary
+```text
+Total predicted proteins: 16,947
+Total DIAMOND hit lines: 36,669
+Proteins with at least one Swiss-Prot hit: 8,078
+Proteins with strict Swiss-Prot hit: 4,284
+
+Percent with at least one Swiss-Prot hit: 47.67%
+Percent with strict Swiss-Prot hit: 25.28%
+```
+Swiss-Prot confidence counts:
+```text
+High:                    2,037
+Medium:                  2,247
+Low:                     2,826
+Weak domain or fragment:   968
+```
+## 14.5 UniProtKB Bacillariophyta database setup
+A diatom-focused UniProtKB database was created using the Bacillariophyta taxonomic group. The database was stored in the home directory:
+```bash
+mkdir -p $HOME/databases/uniprot_bacillariophyta/raw
+mkdir -p $HOME/databases/uniprot_bacillariophyta/diamond
+```
+The compressed FASTA file was downloaded from UniProtKB:
+```bash
+curl -L --retry 5 --retry-delay 10 \
+    -o $HOME/databases/uniprot_bacillariophyta/raw/uniprotkb_bacillariophyta_taxid2836.fasta.gz \
+    "https://rest.uniprot.org/uniprotkb/stream?compressed=true&format=fasta&query=%28taxonomy_id%3A2836%29"
+```
+A DIAMOND database was built:
+```bash
+diamond makedb \
+    --in $HOME/databases/uniprot_bacillariophyta/raw/uniprotkb_bacillariophyta_taxid2836.fasta.gz \
+    --db $HOME/databases/uniprot_bacillariophyta/diamond/uniprotkb_bacillariophyta_taxid2836.dmnd
+```
+The database was linked into the project:
+```bash
+ln -sfn $HOME/databases/uniprot_bacillariophyta 00_databases/uniprot_bacillariophyta_home
+```
+### Logic
+The Bacillariophyta database was added because Swiss-Prot alone is too conservative for a non-model diatom genome. A diatom-focused database increases the chance of detecting homologs from related organisms, including proteins that may not have reviewed Swiss-Prot entries. Because many UniProtKB Bacillariophyta entries are unreviewed, these hits were interpreted as diatom homolog support rather than as the primary curated protein name source.
+## 14.6 DIAMOND search against UniProtKB Bacillariophyta
+Predicted proteins were searched against the Bacillariophyta database using DIAMOND BLASTP:
+```bash
+diamond blastp \
+    --query 01_input/diatom_predicted_proteins.fa \
+    --db 00_databases/uniprot_bacillariophyta_home/diamond/uniprotkb_bacillariophyta_taxid2836.dmnd \
+    --out 02_diamond/DL_diatom_braker4_ET_vs_uniprot_bacillariophyta.tsv \
+    --outfmt 6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore stitle \
+    --evalue 1e-5 \
+    --max-target-seqs 5 \
+    --sensitive \
+    --threads 32
+```
+### Logic
+This search was used to identify diatom-specific homologs that may be missing from Swiss-Prot. The same output fields and thresholds were used as in the Swiss-Prot search so that the two homology layers could be parsed and compared using the same confidence framework. This layer was especially useful for increasing annotation coverage while retaining a clear distinction between curated annotations and broader homolog support.
+### Bacillariophyta result summary
+```text
+Total predicted proteins: 16,947
+Total DIAMOND hit lines: 65,416
+Proteins with at least one Bacillariophyta hit: 13,574
+Proteins with strict Bacillariophyta hit: 11,294
+Percent with at least one Bacillariophyta hit: 80.10%
+Percent with strict Bacillariophyta hit: 66.64%
+```
+Bacillariophyta confidence counts:
+```text
+High:                     8,557
+Medium:                   2,737
+Low:                      1,668
+Weak domain or fragment:    612
+```
+## 14.7 Best-hit parsing and confidence filtering
+Raw DIAMOND outputs were parsed into best-hit tables. For each predicted protein, query coverage and subject coverage were calculated, UniProt identifiers were parsed, and protein name, organism, gene name, taxon ID, and protein evidence fields were extracted from the hit title.
+The best hit per query was selected using:
+```text
+lowest e-value
+highest bitscore
+highest query coverage
+highest percent identity
+```
+Confidence classes were assigned as:
+```text
+High:
+e-value <= 1e-20
+query coverage >= 70%
+percent identity >= 40%
+
+Medium:
+e-value <= 1e-10
+query coverage >= 50%
+percent identity >= 30%
+
+Low:
+e-value <= 1e-5
+query coverage >= 30%
+
+Weak domain or fragment:
+all remaining reported hits
+```
+The strict filtered set was defined as:
+```text
+e-value <= 1e-10
+query coverage >= 50%
+percent identity >= 30%
+```
+The main parsed Swiss-Prot outputs were:
+```text
+03_best_hits/DL_diatom_swissprot_all_hits_with_coverage.tsv
+03_best_hits/DL_diatom_swissprot_best_hits.tsv
+03_best_hits/DL_diatom_swissprot_best_hits_strict.tsv
+03_best_hits/DL_diatom_all_proteins_with_swissprot_annotation.tsv
+03_best_hits/DL_diatom_swissprot_annotation_summary.txt
+```
+The main parsed Bacillariophyta outputs were:
+```text
+03_best_hits/DL_diatom_bacillariophyta_all_hits_with_coverage.tsv
+03_best_hits/DL_diatom_bacillariophyta_best_hits.tsv
+03_best_hits/DL_diatom_bacillariophyta_best_hits_strict.tsv
+03_best_hits/DL_diatom_all_proteins_with_bacillariophyta_annotation.tsv
+03_best_hits/DL_diatom_bacillariophyta_annotation_summary.txt
+```
+### Logic
+Raw DIAMOND hits were not used directly because a low e-value alone does not guarantee that a hit covers most of the query protein. Some hits represent only short conserved domains or fragments. Query coverage and percent identity were therefore calculated so that full-length or near-full-length homologs could be separated from weak domain-only matches. This allowed conservative interpretation of key genes while still retaining lower-confidence hits for exploratory annotation.
+The all-protein output tables were retained because they keep proteins with no hit. This is important for later merging with InterProScan and expression data, where every predicted protein should remain represented even if it lacks a homology-based annotation.
+## 14.8 InterProScan setup and annotation
+InterProScan was installed in the home tools directory and linked into the project:
+```bash
+ln -sfn $HOME/tools/interproscan/current 00_databases/interproscan_home
+```
+InterProScan was run in a Java 11 conda environment:
+```bash
+conda create -n interproscan_env -c conda-forge openjdk=11 -y
+conda activate interproscan_env
+```
+The full BRAKER4 ET protein set was submitted to InterProScan:
+```bash
+00_databases/interproscan_home/interproscan.sh \
+    -i 01_input/diatom_predicted_proteins.fa \
+    -f TSV \
+    -dp \
+    -goterms \
+    -pa \
+    -cpu 32 \
+    -o 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
+```
+### Logic
+InterProScan was added as an annotation layer that does not depend only on full-length sequence similarity to a named protein. It identifies conserved domains, protein families, active sites, GO terms, and pathway signatures, which is especially useful for proteins without strong Swiss-Prot hits. This helps support functional interpretation for proteins that may be divergent, partial, or poorly represented in curated homology databases.
+The `-dp` option was used to disable the pre-calculated match lookup service. This avoids dependence on external internet access during compute-node execution and keeps the run self-contained on the HPC system.
+InterProScan status:
+```text
+Full InterProScan job submitted and running.
+```
+After completion, the raw InterProScan TSV will be summarized to one row per protein before merging with the Swiss-Prot and Bacillariophyta best-hit tables.
+## 14.9 Planned merged annotation table
+After InterProScan finishes, the following files will be merged:
+```text
+03_best_hits/DL_diatom_all_proteins_with_swissprot_annotation.tsv
+03_best_hits/DL_diatom_all_proteins_with_bacillariophyta_annotation.tsv
+06_combined_annotation/DL_diatom_interproscan_summary_by_protein.tsv
+```
+The final master annotation table will contain one row per predicted protein and include:
+```text
+protein_id
+Swiss-Prot accession
+Swiss-Prot protein name
+Swiss-Prot organism
+Swiss-Prot e-value
+Swiss-Prot percent identity
+Swiss-Prot query coverage
+Swiss-Prot confidence
+Bacillariophyta accession
+Bacillariophyta protein name
+Bacillariophyta organism
+Bacillariophyta e-value
+Bacillariophyta percent identity
+Bacillariophyta query coverage
+Bacillariophyta confidence
+InterPro accessions
+InterPro descriptions
+GO terms
+pathway annotations
+```
+### Logic
+The merged table will combine conservative curated protein names, diatom-specific homolog support, and domain-based functional evidence. This makes the final annotation more interpretable than any single database alone. The table will also retain proteins without homology hits, allowing later integration with expression values and avoiding bias toward only well-annotated proteins.
+## 14.10 Expression integration
+Expression estimates will be merged with the final annotation table after the annotation layers are combined. Expression values may be generated at the gene or transcript level using the BRAKER4 GTF and the STAR-aligned RNA-seq BAM file.
+Gene-level counts can be generated with featureCounts:
 ```bash
 featureCounts \
     -T 24 \
@@ -797,7 +1034,7 @@ featureCounts \
     -o DL_diatom.braker4.ET.featureCounts.txt \
     /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam
 ```
-Alternatively, StringTie can be used to estimate transcript abundance.
+Alternatively, StringTie can be used to estimate transcript abundance:
 ```bash
 stringtie \
     /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/Diatoms_Combined_Aligned.sortedByCoord.out.bam \
@@ -807,8 +1044,40 @@ stringtie \
     -p 24 \
     -o DL_diatom.braker4.ET.stringtie.gtf
 ```
-Expression estimates can be combined with functional annotation to summarize transcriptional activity across major diatom functional categories.
-
+### Logic
+Expression integration links predicted function to transcriptional activity. This allows the analysis to distinguish genes that are merely present in the genome from genes that are expressed under the sampled condition. The final expression-integrated annotation table will be used to summarize expressed functions across major diatom biological categories, including photosynthesis, carbon concentrating mechanisms, silica and frustule-associated proteins, nitrogen assimilation, lipid metabolism, vitamin and cofactor metabolism, oxidative stress response, organelle-associated functions, transport, and eukaryotic cellular processes.
+The final expression-integrated table will include:
+```text
+protein_id
+gene_id or transcript_id
+Swiss-Prot annotation
+Bacillariophyta homolog
+InterPro domains
+GO terms
+TPM or count values
+mean expression
+functional category
+```
+## 14.11 Current status of functional annotation
+Completed:
+```text
+Swiss-Prot database download and DIAMOND database construction
+Swiss-Prot DIAMOND search
+Swiss-Prot best-hit parsing
+UniProtKB Bacillariophyta database download and DIAMOND database construction
+Bacillariophyta DIAMOND search
+Bacillariophyta best-hit parsing
+InterProScan installation and Java 11 setup
+InterProScan full run submitted
+```
+Pending:
+```text
+InterProScan completion
+InterProScan summary by protein
+merged master functional annotation table
+expression integration
+manual functional category assignment
+```
 ---
 # 15. Nuclear-enriched genome generation
 After BRAKER4 ET annotation, the genome assembly used for annotation was filtered to define a nuclear-enriched diatom genome. This step was performed after annotation because BRAKER4 had already been run on the broader diatom genome assembly, `18_diatom.fasta`.
