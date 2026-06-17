@@ -901,13 +901,10 @@ The main parsed Bacillariophyta outputs were:
 ### 14.7.1 Swiss-Prot best-hit parsing script
 The raw Swiss-Prot DIAMOND output was parsed with a custom Python script. The script calculated query and subject coverage, extracted UniProt accession identifiers, protein names, organism names, gene names, taxon IDs, and protein evidence fields, and selected the best hit per predicted protein.
 The full Python script is saved in:
-
 ```text
 scripts/make_swissprot_best_hits.py
 ```
-
 Run the script with:
-
 ```bash
 conda activate swissprot_annot
 python scripts/make_swissprot_best_hits.py
@@ -917,13 +914,10 @@ The raw DIAMOND output was not used directly because some statistically signific
 ### 14.7.2 Bacillariophyta best-hit parsing script
 The UniProtKB Bacillariophyta DIAMOND output was parsed using the same logic as the Swiss-Prot output. This kept the confidence framework consistent between the curated Swiss-Prot layer and the diatom-specific homolog layer.
 The full Python script is saved in:
-
 ```text
 scripts/make_bacillariophyta_best_hits.py
 ```
-
 Run the script with:
-
 ```bash
 conda activate swissprot_annot
 python scripts/make_bacillariophyta_best_hits.py
@@ -931,38 +925,22 @@ python scripts/make_bacillariophyta_best_hits.py
 #### Logic
 The Bacillariophyta database increased diatom-specific homolog detection, but many entries are unreviewed. Therefore, hits were filtered and ranked using the same e-value, coverage, and identity criteria used for Swiss-Prot. This allowed the Bacillariophyta output to be used as a homolog-support layer rather than as an unfiltered functional naming source.
 ### 14.8 InterProScan setup and annotation
-
 InterProScan was installed in the home tools directory and linked into the project:
-
 ```bash
 ln -sfn $HOME/tools/interproscan/current 00_databases/interproscan_home
 ```
-
 InterProScan was run in a Java 11 conda environment:
-
 ```bash
 conda create -n interproscan_env -c conda-forge openjdk=11 -y
 conda activate interproscan_env
 ```
-
 The full BRAKER4 ET protein set was submitted to InterProScan using SLURM:
-
 ```bash
 sbatch slurm/interproscan_diatom_full.sh
 ```
-
 The SLURM script used was:
-
 ```bash
 #!/bin/bash
-#SBATCH --job-name=ipr_diatom_full
-#SBATCH --account=def-strous
-#SBATCH --time=72:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=120G
-#SBATCH --output=logs/interproscan_full_%j.out
-#SBATCH --error=logs/interproscan_full_%j.err
-
 set -euo pipefail
 
 source ~/miniforge3/etc/profile.d/conda.sh
@@ -997,11 +975,8 @@ else
     exit 1
 fi
 ```
-
 MobiDBLite was excluded after the initial run failed because of a Python compatibility error in the bundled MobiDBLite script. Because MobiDBLite predicts intrinsically disordered regions and was not central to the functional annotation goals, it was excluded while retaining the main protein family, domain, and GO annotation resources.
-
 The completed InterProScan run included:
-
 ```text
 AntiFam
 CDD
@@ -1021,25 +996,19 @@ SFLD
 SMART
 SUPERFAMILY
 ```
-
 The `-goterms` option was used to report GO terms, and `-pa` was used to include pathway annotations where available. The `-dp` option disabled the pre-calculated match lookup service, making the job independent of internet access from the compute node.
-
 #### InterProScan result summary
-
 InterProScan completed successfully and produced:
-
 ```text
 Raw InterProScan rows:              102,153
 Proteins with InterProScan hits:     13,106 / 16,947
 Percent with InterProScan hits:      77.34%
 ```
-
 The raw InterProScan file was:
 
 ```text
 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
 ```
-
 The raw file contains multiple rows per protein because a single protein can contain multiple domains, repeats, sites, signatures, GO terms, or pathway annotations. Therefore, the raw output was summarized to one row per predicted protein before integration with Swiss-Prot and Bacillariophyta annotations.
 ### 14.9 InterProScan summary by protein
 The raw InterProScan TSV was collapsed into one row per protein using a custom Python script:
@@ -1177,6 +1146,9 @@ AntiFam screen completed
 <details>
 <summary><strong>15. Nuclear-enriched genome generation</strong> - organelle contig removal and BRAKER4 annotation filtering</summary>
 
+<details>
+<summary><strong>15. Nuclear-enriched genome generation</strong> - organelle contig removal and BRAKER4 annotation filtering</summary>
+
 ### 15.1 Input files
 ```bash
 mkdir -p /work/ebg_lab/eb/diatom_consortia/nuclear_genome_filtering_18_diatom
@@ -1186,10 +1158,12 @@ WHOLE=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diat
 CHLORO=/work/ebg_lab/eb/diatom_consortia/organelle/2_chloro/chloroplast_contig_1443_trimmed.fasta
 MITO=/work/ebg_lab/eb/diatom_consortia/organelle/mito/diatom_candidate_mitochondrion_2contigs.fasta
 ```
+This command creates a dedicated working directory for nuclear genome filtering and moves into it. The variables define the whole diatom assembly, the chloroplast reference, and the mitochondrial reference used for organelle contig detection.
 Input assembly statistics:
 ```bash
 seqkit stats $WHOLE $CHLORO $MITO
 ```
+This command summarizes the number of sequences and total length of the input assembly and organelle references. It provides a starting point for checking how much sequence is removed during nuclear-enrichment filtering.
 ```text
 18_diatom.fasta                              3,010 contigs   82,172,226 bp
 chloroplast_contig_1443_trimmed.fasta           1 contig       120,429 bp
@@ -1200,6 +1174,7 @@ diatom_candidate_mitochondrion_2contigs.fasta    2 contigs      104,526 bp
 cat $CHLORO $MITO > organelles_chloro_mito.fasta
 seqkit stats organelles_chloro_mito.fasta
 ```
+This command combines the chloroplast and mitochondrial FASTA files into a single organelle reference file. The `seqkit stats` command confirms the number of organelle sequences and total reference length.
 The combined organelle reference contained three sequences with a total length of 224,955 bp.
 ### 15.3 Align the genome against organelle references
 ```bash
@@ -1208,6 +1183,7 @@ minimap2 -x asm5 -c \
     $WHOLE \
     > whole_vs_organelles.paf
 ```
+This command aligns the whole diatom assembly against the combined chloroplast and mitochondrial references. The `asm5` preset is appropriate for closely related assembled sequences, and the PAF output records which assembly contigs align to organelle references.
 The PAF output was used to identify regions of `18_diatom.fasta` with similarity to the chloroplast or mitochondrial genomes.
 ### 15.4 Calculate organelle-aligned coverage per contig
 ```bash
@@ -1239,12 +1215,15 @@ FNR==NR {len[$1]=$2; next}
 
 sort -k4,4nr organelle_coverage_per_contig.tsv | head -n 50
 ```
+The first `awk` command extracts query contig coordinates from the PAF file and converts them into BED-like intervals. The `sort` and `bedtools merge` commands merge overlapping aligned intervals so that aligned regions are not counted multiple times.
+`seqkit fx2tab` records the total length of each contig in the whole assembly. The following `awk` commands calculate the total organelle-aligned length per contig and convert this to percent coverage, while the final `sort` command displays the strongest organelle-like candidates.
 ### 15.5 Remove organelle-like contigs
 Contigs were classified as organelle-like if at least 70% of the contig length aligned to the chloroplast or mitochondrial reference.
 ```bash
 awk '$4 >= 70 {print $1}' organelle_coverage_per_contig.tsv \
     > organelle_like_contigs.70pct.txt
 ```
+This command selects contigs for removal if at least 70% of their length aligns to the organelle reference. The resulting text file contains only the names of contigs classified as chloroplast-like or mitochondrial-like.
 This identified three organelle-like contigs:
 ```text
 contig_1443
@@ -1259,6 +1238,7 @@ seqkit grep \
     $WHOLE \
     > 18_diatom_nuclear_enriched.v1.fasta
 ```
+This command removes the organelle-like contigs from the whole diatom assembly. The `-v` option keeps all sequences except those listed in `organelle_like_contigs.70pct.txt`, producing the nuclear-enriched genome FASTA.
 Assembly statistics were calculated before and after organelle removal.
 ```bash
 seqkit stats \
@@ -1266,6 +1246,7 @@ seqkit stats \
     organelles_chloro_mito.fasta \
     18_diatom_nuclear_enriched.v1.fasta
 ```
+This command compares the original assembly, the combined organelle reference, and the final nuclear-enriched genome. It confirms the number of contigs and total assembly length after organelle-like contigs were removed.
 Final nuclear-enriched genome statistics:
 ```text
 18_diatom.fasta                         3,010 contigs   82,172,226 bp
@@ -1277,9 +1258,7 @@ Three organelle-like contigs were removed, corresponding to 260,454 bp or 0.317%
 BRAKER4 was not rerun after organelle filtering because only three organelle-like contigs were removed from the BRAKER4 input assembly. Instead, the existing BRAKER4 annotation was filtered to retain only features located on contigs present in the nuclear-enriched genome.
 ```bash
 seqkit seq -n 18_diatom_nuclear_enriched.v1.fasta > nuclear_contigs.v1.txt
-
 MY_GFF=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.gff3
-
 awk 'BEGIN{FS=OFS="\t"}
 FNR==NR {
     keep[$1]=1;
@@ -1294,10 +1273,12 @@ $1 in keep {
 }' nuclear_contigs.v1.txt $MY_GFF \
     > braker.18_diatom_nuclear_only.v1.gff3
 ```
+The `seqkit seq -n` command extracts the names of contigs retained in the nuclear-enriched genome, and `MY_GFF` defines the original BRAKER4 annotation file. The `awk` command then keeps only GFF3 features located on retained nuclear contigs while excluding the embedded FASTA section.
 Count retained nuclear gene models:
 ```bash
 grep -c $'\tgene\t' braker.18_diatom_nuclear_only.v1.gff3
 ```
+This command counts the number of gene features retained in the nuclear-filtered BRAKER4 annotation. It verifies the final number of predicted gene models associated with the nuclear-enriched genome.
 Final nuclear genome files:
 ```text
 18_diatom_nuclear_enriched.v1.fasta
