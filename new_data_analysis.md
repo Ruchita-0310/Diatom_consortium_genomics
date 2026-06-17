@@ -38,19 +38,6 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Gene annotation | STAR, BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, BUSCO/compleasm |
 | Comparative genomics | NCBI Datasets, BLASTN, bedtools, Python |
 
-## Repository structure for scripts
-
-Custom Python scripts are stored in the `scripts/` directory rather than embedded directly in this README.
-
-```text
-scripts/
-├── classify_metaeuk_contigs.py
-├── make_swissprot_best_hits.py
-└── make_bacillariophyta_best_hits.py
-```
-
-Each script can be run from the command line in the relevant working directory, as shown in the sections below.
-
 ---
 # 1. Genome assembly
 Long-read assembly was performed with Nanopore reads basecalled with Guppy. Flye was run in metagenome mode because the sample represented a diatom-associated microbial consortium rather than an isolate genome.
