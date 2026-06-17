@@ -33,34 +33,7 @@ Phaeodactylum tricornutum comparison summarized as yes/no only
    ↓
 Final clean BRAKER4 isoform-level gene table
 ```
-
-## Final gene table
-
-The final output is a clean BRAKER4 isoform-level table:
-
-```text
-09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
-09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_sorted_by_Average_TPM.tsv
-```
-
-The table retains one row per BRAKER4 predicted protein isoform and does not collapse gene IDs. The first columns are:
-
-```text
-gene_id
-transdecoder_orf_id
-compartment
-gene_length_bp
-recommended_annotation
-recommended_annotation_source
-recommended_annotation_confidence
-Average_TPM
-in_Phaeodactylum_tricornutum
-```
-
-The table includes Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, GO, pathway, AntiFam, coordinate, and length fields. `transdecoder_orf_id` records the representative TransDecoder ORF that contributed the `Average_TPM` value; it is left blank when no valid numeric `Average_TPM` is available. The *Phaeodactylum tricornutum* comparison is retained only as a yes/no column. Detailed PT hit columns are not included in the final table.
-
 ## Repository structure
-
 ```text
 .
 ├── README.md
@@ -77,7 +50,6 @@ The table includes Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, GO, path
     ├── 09_add_ONLY_Average_TPM_clean.py
     └── 10_make_FINAL_clean_BRAKER_isoform_table.py
 ```
-
 ## Main scripts
 ```text
 make_swissprot_best_hits.py
@@ -104,6 +76,5 @@ merge_functional_annotation_layers.py
 10_make_FINAL_clean_BRAKER_isoform_table.py
   Creates the final clean BRAKER4 isoform table with PT yes/no only.
 ```
-
 ## Detailed workflow
 The full command-by-command workflow is documented in [`data_analysis.md`](data_analysis.md). Each major step is stored in a collapsible section with commands, outputs, and interpretation notes.
