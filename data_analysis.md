@@ -1285,6 +1285,7 @@ Final nuclear genome files:
 braker.18_diatom_nuclear_only.v1.gff3
 ```
 </details>
+</details>
 
 <details>
 <summary><strong>16. Pairwise genome comparison with <em>Phaeodactylum tricornutum</em></strong> - BLASTN and bedtools</summary>
