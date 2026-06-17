@@ -47,8 +47,32 @@ scripts/
 ├── classify_metaeuk_contigs.py
 ├── make_swissprot_best_hits.py
 ├── make_bacillariophyta_best_hits.py
+├── summarize_interproscan.py
+├── merge_functional_annotation_layers.py
 └── merge_phaeodactylum_blast_hits.py
 ```
+
+Script purposes:
+```text
+classify_metaeuk_contigs.py
+  Classifies contigs using MetaEuk ORF-level taxonomy and a priority-based contig classification scheme.
+
+make_swissprot_best_hits.py
+  Parses Swiss-Prot DIAMOND output, calculates coverage, assigns confidence classes, and writes best-hit tables.
+
+make_bacillariophyta_best_hits.py
+  Parses UniProtKB Bacillariophyta DIAMOND output using the same confidence framework as the Swiss-Prot parser.
+
+summarize_interproscan.py
+  Collapses raw InterProScan TSV output to one row per predicted protein and summarizes database contributions.
+
+merge_functional_annotation_layers.py
+  Merges Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence into a master annotation table.
+
+merge_phaeodactylum_blast_hits.py
+  Merges diatom BLASTN best hits with overlapping Phaeodactylum tricornutum gene models.
+```
+
 Each script can be run from the command line in the relevant working directory, as shown in the sections below.
 ## Analysis workflow
 Click each section to expand the commands, notes, and outputs.
@@ -443,7 +467,7 @@ The MetaQUAST output was used to identify candidate chloroplast and mitochondria
 </details>
 
 <details>
-<summary><strong>13. Diatom genome annotation</strong> - BRAKER4 ET mode</summary>
+<summary><strong>13. Diatom genome annotation with BRAKER4 ET mode</strong> - BRAKER4 ET mode</summary>
 
 Gene models were generated with BRAKER4 using a diatom genome assembly and RNA-seq evidence. The genome was not soft-masked before annotation; therefore, repeat masking was performed internally within the BRAKER4 workflow using RepeatModeler, RepeatMasker, and TRF. The final accepted run used ET mode, meaning that gene prediction was based on RNA-seq evidence only.
 ```text
@@ -710,7 +734,7 @@ Because GeneMark-ETP did not complete successfully, the annotation was rerun in 
 
 <details>
 <summary><strong>14. Functional annotation of BRAKER4-predicted proteins</strong> - DIAMOND, Swiss-Prot, Bacillariophyta, and InterProScan</summary>
-
+   
 After accepting the BRAKER4 ET annotation, the predicted protein set was used for downstream functional annotation. The final annotation strategy was designed specifically for a eukaryotic diatom genome rather than a prokaryote-centered metagenomic annotation workflow. For this reason, the workflow used three complementary annotation layers: curated Swiss-Prot homology, diatom-focused UniProtKB Bacillariophyta homology, and InterProScan domain/family annotation.
 The final BRAKER4 ET protein file was used as the main input:
 ```bash
@@ -741,6 +765,7 @@ A conda environment was used for DIAMOND searches and parsing:
 conda create -n swissprot_annot -c conda-forge -c bioconda diamond pandas seqkit wget pigz -y
 conda activate swissprot_annot
 ```
+
 ### 14.3 Swiss-Prot database setup
 Swiss-Prot was downloaded and stored in the home directory to avoid filling the project working directory:
 ```bash
@@ -748,10 +773,10 @@ mkdir -p $HOME/databases/swissprot/raw
 mkdir -p $HOME/databases/swissprot/diamond
 ```
 The downloaded Swiss-Prot release was:
-
 ```text
 UniProtKB/Swiss-Prot Release 2026_02 of 10-Jun-2026
 ```
+
 The database contained:
 ```text
 575,503 reviewed protein sequences
@@ -809,6 +834,7 @@ curl -L --retry 5 --retry-delay 10 \
     -o $HOME/databases/uniprot_bacillariophyta/raw/uniprotkb_bacillariophyta_taxid2836.fasta.gz \
     "https://rest.uniprot.org/uniprotkb/stream?compressed=true&format=fasta&query=%28taxonomy_id%3A2836%29"
 ```
+
 A DIAMOND database was built:
 ```bash
 diamond makedb \
@@ -838,6 +864,7 @@ Total predicted proteins: 16,947
 Total DIAMOND hit lines: 65,416
 Proteins with at least one Bacillariophyta hit: 13,574
 Proteins with strict Bacillariophyta hit: 11,294
+
 Percent with at least one Bacillariophyta hit: 80.10%
 Percent with strict Bacillariophyta hit: 66.64%
 ```
@@ -876,6 +903,7 @@ query coverage >= 30%
 Weak domain or fragment:
 all remaining reported hits
 ```
+
 The strict filtered set was defined as:
 ```text
 e-value <= 1e-10
@@ -911,6 +939,7 @@ python scripts/make_swissprot_best_hits.py
 ```
 #### Logic
 The raw DIAMOND output was not used directly because some statistically significant hits only aligned to short domains or fragments. This script calculated query coverage and assigned confidence classes so that full-length or near-full-length homologs could be separated from weaker domain-only matches. The all-protein output was retained so that proteins without Swiss-Prot hits could still be included in downstream InterProScan and expression merges.
+
 ### 14.7.2 Bacillariophyta best-hit parsing script
 The UniProtKB Bacillariophyta DIAMOND output was parsed using the same logic as the Swiss-Prot output. This kept the confidence framework consistent between the curated Swiss-Prot layer and the diatom-specific homolog layer.
 The full Python script is saved in:
@@ -929,11 +958,13 @@ InterProScan was installed in the home tools directory and linked into the proje
 ```bash
 ln -sfn $HOME/tools/interproscan/current 00_databases/interproscan_home
 ```
+
 InterProScan was run in a Java 11 conda environment:
 ```bash
 conda create -n interproscan_env -c conda-forge openjdk=11 -y
 conda activate interproscan_env
 ```
+
 The full BRAKER4 ET protein set was submitted to InterProScan using SLURM:
 ```bash
 sbatch slurm/interproscan_diatom_full.sh
@@ -961,19 +992,6 @@ mkdir -p temp
     -exclappl MobiDBLite \
     -cpu 32 \
     -o 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
-
-echo "Checking InterProScan output..."
-
-if [ -s 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv ]; then
-    echo "InterProScan finished successfully."
-    ls -lh 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
-    wc -l 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
-    echo "First lines:"
-    head -5 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
-else
-    echo "ERROR: InterProScan output file was not created or is empty."
-    exit 1
-fi
 ```
 MobiDBLite was excluded after the initial run failed because of a Python compatibility error in the bundled MobiDBLite script. Because MobiDBLite predicts intrinsically disordered regions and was not central to the functional annotation goals, it was excluded while retaining the main protein family, domain, and GO annotation resources.
 The completed InterProScan run included:
@@ -1004,8 +1022,8 @@ Raw InterProScan rows:              102,153
 Proteins with InterProScan hits:     13,106 / 16,947
 Percent with InterProScan hits:      77.34%
 ```
-The raw InterProScan file was:
 
+The raw InterProScan file was:
 ```text
 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
 ```
@@ -1021,7 +1039,6 @@ conda activate swissprot_annot
 python scripts/summarize_interproscan.py
 ```
 The output files were:
-
 ```text
 06_combined_annotation/DL_diatom_interproscan_summary_by_protein.tsv
 06_combined_annotation/DL_diatom_all_proteins_with_interproscan_summary.tsv
@@ -1069,48 +1086,105 @@ protein_id   AntiFam accession   AntiFam description
 g10893.t1    ANF00012            tRNA
 g11404.t1    ANF00005            Antisense to 23S rRNA
 ```
+
 AntiFam matches were treated as warning flags rather than functional annotations. These two proteins were marked as potentially spurious predictions or RNA-associated ORFs and should not be used for biological interpretation of protein function.
+
 The AntiFam hits were inspected with:
 ```bash
 awk -F '\t' '$4=="AntiFam"' 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv | column -t
 ```
-#### Logic
-InterProScan was summarized to one row per protein so that it could be merged cleanly with the Swiss-Prot and Bacillariophyta best-hit tables. This avoids duplicating protein rows in the final master annotation table while retaining domain, family, GO, and pathway evidence.
-The analysis-count summary was used as a quality check on the InterProScan run. A high contribution from domain and family databases such as Pfam, Gene3D, SUPERFAMILY, and PANTHER indicates that the annotation was driven mainly by conserved protein signatures. The two AntiFam hits corresponded to tRNA- and rRNA-associated profiles, suggesting that these specific gene models may represent non-coding RNA-associated artifacts rather than reliable protein-coding genes. Because only two AntiFam hits were detected among 16,947 predicted proteins, this screen did not indicate a broad protein prediction problem.
-### 14.10 Planned merged annotation table
-After InterProScan summarization, the following files will be merged:
+### 14.10 Master functional annotation table
+After Swiss-Prot, Bacillariophyta, and InterProScan outputs were complete, all evidence layers were merged into a single master annotation table. The merge also incorporated the two AntiFam warning flags.
+The AntiFam flag file was created with explicit tab separators:
+```bash
+printf "protein_id\tantifam_accession\tantifam_description\tinterpretation\n" \
+> 06_combined_annotation/DL_diatom_antifam_flagged_proteins.tsv
+
+printf "g10893.t1\tANF00012\ttRNA\tpotential_spurious_or_RNA_associated_ORF\n" \
+>> 06_combined_annotation/DL_diatom_antifam_flagged_proteins.tsv
+
+printf "g11404.t1\tANF00005\tAntisense to 23S rRNA\tpotential_spurious_or_RNA_associated_ORF\n" \
+>> 06_combined_annotation/DL_diatom_antifam_flagged_proteins.tsv
+```
+The final annotation layers were merged using:
+```text
+scripts/merge_functional_annotation_layers.py
+```
+Run the script with:
+```bash
+conda activate swissprot_annot
+python scripts/merge_functional_annotation_layers.py
+```
+The script merged:
 ```text
 03_best_hits/DL_diatom_all_proteins_with_swissprot_annotation.tsv
 03_best_hits/DL_diatom_all_proteins_with_bacillariophyta_annotation.tsv
 06_combined_annotation/DL_diatom_all_proteins_with_interproscan_summary.tsv
+06_combined_annotation/DL_diatom_antifam_flagged_proteins.tsv
 ```
-The final master annotation table will contain one row per predicted protein and include:
+The merged master table was checked with:
+```bash
+wc -l 06_combined_annotation/DL_diatom_master_functional_annotation.tsv
+```
+The final master table contained:
+```text
+16,948 lines = 16,947 predicted proteins + 1 header line
+```
+AntiFam-flagged proteins were checked in the merged table:
+```bash
+grep -E 'g10893.t1|g11404.t1' \
+  06_combined_annotation/DL_diatom_master_functional_annotation.tsv \
+  | column -t -s $'\t'
+```
+Both AntiFam proteins were retained in the master table but flagged with `has_antifam_flag = yes`. This preserves the annotation evidence while allowing these entries to be excluded from biological interpretation.
+### 14.11 AntiFam-filtered interpretation tables
+Two downstream interpretation files were generated from the master annotation table. One file contains only AntiFam-flagged proteins, and the other removes AntiFam-flagged proteins for cleaner downstream interpretation.
+```bash
+awk -F'\t' 'NR==1 || $9=="yes"' \
+  06_combined_annotation/DL_diatom_master_functional_annotation.tsv \
+  > 06_combined_annotation/DL_diatom_master_functional_annotation_AntiFam_flagged_only.tsv
+```
+This file contains the two proteins flagged by AntiFam plus the table header.
+```bash
+awk -F'\t' 'NR==1 || $9!="yes"' \
+  06_combined_annotation/DL_diatom_master_functional_annotation.tsv \
+  > 06_combined_annotation/DL_diatom_master_functional_annotation_no_AntiFam.tsv
+```
+This file excludes AntiFam-flagged proteins and can be used for downstream functional summaries where potential RNA-associated ORFs should not be interpreted as protein-coding genes.
+### 14.12 Final functional annotation outputs
+The final functional annotation outputs were:
+```text
+06_combined_annotation/DL_diatom_interproscan_summary_by_protein.tsv
+06_combined_annotation/DL_diatom_all_proteins_with_interproscan_summary.tsv
+06_combined_annotation/DL_diatom_interproscan_analysis_counts.tsv
+06_combined_annotation/DL_diatom_interproscan_summary_stats.txt
+06_combined_annotation/DL_diatom_antifam_flagged_proteins.tsv
+06_combined_annotation/DL_diatom_master_functional_annotation.tsv
+06_combined_annotation/DL_diatom_master_functional_annotation_for_manual_categories.tsv
+06_combined_annotation/DL_diatom_master_functional_annotation_AntiFam_flagged_only.tsv
+06_combined_annotation/DL_diatom_master_functional_annotation_no_AntiFam.tsv
+06_combined_annotation/DL_diatom_master_functional_annotation_summary.txt
+```
+
+The master annotation table contains one row per predicted protein and includes:
 ```text
 protein_id
-Swiss-Prot accession
-Swiss-Prot protein name
-Swiss-Prot organism
-Swiss-Prot e-value
-Swiss-Prot percent identity
-Swiss-Prot query coverage
-Swiss-Prot confidence
-Bacillariophyta accession
-Bacillariophyta protein name
-Bacillariophyta organism
-Bacillariophyta e-value
-Bacillariophyta percent identity
-Bacillariophyta query coverage
-Bacillariophyta confidence
-InterPro accessions
-InterPro descriptions
+recommended annotation
+recommended annotation source
+recommended annotation confidence
+Swiss-Prot annotation fields
+Bacillariophyta annotation fields
+InterProScan domains and signatures
 GO terms
 pathway annotations
 AntiFam flag
 ```
 #### Logic
-The merged table will combine conservative curated protein names, diatom-specific homolog support, and domain-based functional evidence. This makes the final annotation more interpretable than any single database alone. The table will also retain proteins without homology hits, allowing later integration with expression values and avoiding bias toward only well-annotated proteins.
-### 14.11 Expression integration
+The merged table combines conservative curated protein names, diatom-specific homolog support, domain-based functional evidence, GO terms, pathway annotations, and AntiFam warning flags. This makes the annotation more interpretable than any single database alone while retaining proteins without homology hits for later expression integration and manual category assignment.
+### 14.13 Expression integration
+
 Expression estimates will be integrated after the functional annotation layers are combined. The main objective is to link predicted diatom proteins to transcript abundance so that expressed functions can be summarized across major biological categories.
+
 The final expression-integrated annotation table will include:
 ```text
 protein_id
@@ -1126,7 +1200,7 @@ functional category
 #### Logic
 Expression integration links predicted function to transcriptional activity. This allows the analysis to distinguish genes that are merely present in the genome from genes that are expressed under the sampled condition. The final expression-integrated annotation table will be used to summarize expressed functions across major diatom biological categories, including photosynthesis, carbon concentrating mechanisms, silica and frustule-associated proteins, nitrogen assimilation, lipid metabolism, vitamin and cofactor metabolism, oxidative stress response, organelle-associated functions, transport, and eukaryotic cellular processes.
 FeatureCounts was tested as an optional gene-level count check using the combined STAR BAM file, but it was not retained as the main expression layer because the combined BAM produces one combined count column and does not represent replicate-level expression. TPM or transcript-level abundance estimates will be used for the main expression-integrated functional summary.
-### 14.12 Current status of functional annotation
+### 14.14 Current status of functional annotation
 Completed:
 ```text
 Swiss-Prot database download and DIAMOND database construction
@@ -1140,11 +1214,13 @@ InterProScan full run completed
 InterProScan summary by protein completed
 InterProScan database contribution summary completed
 AntiFam screen completed
+Master functional annotation table generated
+AntiFam-flagged interpretation table generated
+AntiFam-filtered interpretation table generated
+Manual functional category scaffold generated
 ```
-</details>
 
-<details>
-<summary><strong>15. Nuclear-enriched genome generation</strong> - organelle contig removal and BRAKER4 annotation filtering</summary>
+</details>
 
 <details>
 <summary><strong>15. Nuclear-enriched genome generation</strong> - organelle contig removal and BRAKER4 annotation filtering</summary>
@@ -1285,7 +1361,6 @@ Final nuclear genome files:
 braker.18_diatom_nuclear_only.v1.gff3
 ```
 </details>
-</details>
 
 <details>
 <summary><strong>16. Pairwise genome comparison with <em>Phaeodactylum tricornutum</em></strong> - BLASTN and bedtools</summary>
@@ -1399,16 +1474,13 @@ awk 'BEGIN{OFS="\t"} $3 >= 70 && $4 >= 200 && $11 <= 1e-10' \
     > blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv
 ```
 This command keeps only stronger BLASTN alignments with at least 70% identity, at least 200 bp alignment length, and e-value ≤ 1e-10. The filtered file reduces weak or very short matches before gene-overlap analysis.
-
 This produced 4,895 filtered BLASTN alignments.
-
 ```bash
 wc -l blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv
 ```
 This command counts the number of BLASTN alignments that passed the filtering thresholds. It confirms that 4,895 nucleotide alignments were retained for downstream interpretation.
 ### 16.8 Identify diatom genes overlapping *Phaeodactylum*-like regions
 Filtered BLASTN hits were converted to BED format using coordinates on the updated nuclear-enriched diatom genome.
-
 ```bash
 awk 'BEGIN{OFS="\t"} {
   qs=($7<$8?$7:$8)-1;
@@ -1436,9 +1508,7 @@ cut -f4 blast_out/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv \
     | wc -l
 ```
 This command counts the number of unique diatom gene IDs that overlap filtered BLASTN hits. It avoids counting the same gene multiple times if it overlaps more than one BLAST alignment.
-
 The percentage of nuclear genes with detectable nucleotide similarity to *P. tricornutum* was calculated.
-
 ```bash
 TOTAL_GENES=$(wc -l < blast_out/18_diatom_nuclear_v1_genes.bed)
 
