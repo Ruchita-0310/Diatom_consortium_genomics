@@ -793,8 +793,6 @@ A conda environment was used for DIAMOND searches and parsing:
 conda create -n swissprot_annot -c conda-forge -c bioconda diamond pandas seqkit wget pigz -y
 conda activate swissprot_annot
 ```
-### Logic
-DIAMOND was selected because it provides fast protein sequence similarity searches against large protein databases. The output was generated in tabular format so that hit quality, query coverage, subject coverage, accession identifiers, organism names, and protein names could be parsed reproducibly. The same search settings were used for Swiss-Prot and Bacillariophyta so that results from the two homology layers could be compared directly.
 ## 14.3 Swiss-Prot database setup
 Swiss-Prot was downloaded and stored in the home directory to avoid filling the project working directory:
 ```bash
@@ -820,8 +818,6 @@ The database directory was linked into the project:
 ```bash
 ln -sfn $HOME/databases/swissprot 00_databases/swissprot_home
 ```
-### Logic
-Swiss-Prot was used as the highest-confidence functional naming layer because it contains manually reviewed protein entries. Hits to Swiss-Prot were treated as conservative annotations, especially when they had strong e-values, good query coverage, and reasonable percent identity. However, because Swiss-Prot is relatively small and contains limited representation from many non-model diatoms, it was not expected to annotate the full predicted protein set.
 ## 14.4 DIAMOND search against Swiss-Prot
 Predicted proteins were searched against Swiss-Prot using DIAMOND BLASTP:
 ```bash
@@ -875,8 +871,6 @@ The database was linked into the project:
 ```bash
 ln -sfn $HOME/databases/uniprot_bacillariophyta 00_databases/uniprot_bacillariophyta_home
 ```
-### Logic
-The Bacillariophyta database was added because Swiss-Prot alone is too conservative for a non-model diatom genome. A diatom-focused database increases the chance of detecting homologs from related organisms, including proteins that may not have reviewed Swiss-Prot entries. Because many UniProtKB Bacillariophyta entries are unreviewed, these hits were interpreted as diatom homolog support rather than as the primary curated protein name source.
 ## 14.6 DIAMOND search against UniProtKB Bacillariophyta
 Predicted proteins were searched against the Bacillariophyta database using DIAMOND BLASTP:
 ```bash
@@ -890,8 +884,6 @@ diamond blastp \
     --sensitive \
     --threads 32
 ```
-### Logic
-This search was used to identify diatom-specific homologs that may be missing from Swiss-Prot. The same output fields and thresholds were used as in the Swiss-Prot search so that the two homology layers could be parsed and compared using the same confidence framework. This layer was especially useful for increasing annotation coverage while retaining a clear distinction between curated annotations and broader homolog support.
 ### Bacillariophyta result summary
 ```text
 Total predicted proteins: 16,947
@@ -958,9 +950,6 @@ The main parsed Bacillariophyta outputs were:
 03_best_hits/DL_diatom_all_proteins_with_bacillariophyta_annotation.tsv
 03_best_hits/DL_diatom_bacillariophyta_annotation_summary.txt
 ```
-### Logic
-Raw DIAMOND hits were not used directly because a low e-value alone does not guarantee that a hit covers most of the query protein. Some hits represent only short conserved domains or fragments. Query coverage and percent identity were therefore calculated so that full-length or near-full-length homologs could be separated from weak domain-only matches. This allowed conservative interpretation of key genes while still retaining lower-confidence hits for exploratory annotation.
-The all-protein output tables were retained because they keep proteins with no hit. This is important for later merging with InterProScan and expression data, where every predicted protein should remain represented even if it lacks a homology-based annotation.
 ## 14.8 InterProScan setup and annotation
 InterProScan was installed in the home tools directory and linked into the project:
 ```bash
@@ -981,13 +970,6 @@ The full BRAKER4 ET protein set was submitted to InterProScan:
     -pa \
     -cpu 32 \
     -o 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
-```
-### Logic
-InterProScan was added as an annotation layer that does not depend only on full-length sequence similarity to a named protein. It identifies conserved domains, protein families, active sites, GO terms, and pathway signatures, which is especially useful for proteins without strong Swiss-Prot hits. This helps support functional interpretation for proteins that may be divergent, partial, or poorly represented in curated homology databases.
-The `-dp` option was used to disable the pre-calculated match lookup service. This avoids dependence on external internet access during compute-node execution and keeps the run self-contained on the HPC system.
-InterProScan status:
-```text
-Full InterProScan job submitted and running.
 ```
 After completion, the raw InterProScan TSV will be summarized to one row per protein before merging with the Swiss-Prot and Bacillariophyta best-hit tables.
 ## 14.9 Planned merged annotation table
@@ -1019,8 +1001,6 @@ InterPro descriptions
 GO terms
 pathway annotations
 ```
-### Logic
-The merged table will combine conservative curated protein names, diatom-specific homolog support, and domain-based functional evidence. This makes the final annotation more interpretable than any single database alone. The table will also retain proteins without homology hits, allowing later integration with expression values and avoiding bias toward only well-annotated proteins.
 ## 14.10 Expression integration
 Expression estimates will be merged with the final annotation table after the annotation layers are combined. Expression values may be generated at the gene or transcript level using the BRAKER4 GTF and the STAR-aligned RNA-seq BAM file.
 Gene-level counts can be generated with featureCounts:
