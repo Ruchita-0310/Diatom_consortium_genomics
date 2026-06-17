@@ -1364,7 +1364,9 @@ braker.18_diatom_nuclear_only.v1.gff3
 
 <details>
 <summary><strong>16. Pairwise genome comparison with <em>Phaeodactylum tricornutum</em></strong> - BLASTN and bedtools</summary>
+   
 A pairwise genome comparison was performed between the updated nuclear-enriched diatom genome and the reference genome of *Phaeodactylum tricornutum*. This analysis was used as a nucleotide-level similarity screen and was not intended to define complete gene orthology. Protein-level comparison using BLASTP, DIAMOND, or OrthoFinder is recommended for a more complete assessment of conserved gene content.
+
 ### 16.1 Input files and working directory
 ```bash
 MY_GENOME=/work/ebg_lab/eb/diatom_consortia/nuclear_genome_filtering_18_diatom/18_diatom_nuclear_enriched.v1.fasta
