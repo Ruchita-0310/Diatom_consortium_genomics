@@ -443,7 +443,7 @@ The MetaQUAST output was used to identify candidate chloroplast and mitochondria
 </details>
 
 <details>
-<summary><strong>13. Diatom genome annotation with BRAKER4 ET mode</strong> - BRAKER4 ET mode</summary>
+<summary><strong>13. Diatom genome annotation</strong> - BRAKER4 ET mode</summary>
 
 Gene models were generated with BRAKER4 using a diatom genome assembly and RNA-seq evidence. The genome was not soft-masked before annotation; therefore, repeat masking was performed internally within the BRAKER4 workflow using RepeatModeler, RepeatMasker, and TRF. The final accepted run used ET mode, meaning that gene prediction was based on RNA-seq evidence only.
 ```text
