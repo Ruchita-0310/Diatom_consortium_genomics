@@ -1,5 +1,5 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 gene prediction, nuclear genome filtering, and comparison with the reference diatom *Phaeodactylum tricornutum*.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, and comparison with the reference diatom *Phaeodactylum tricornutum*. The final gene table is a clean BRAKER4 isoform-level table with one row per predicted protein isoform.
 ## Workflow overview
 ```text
 Nanopore reads
@@ -22,9 +22,13 @@ BRAKER4 ET gene annotation using RNA-seq evidence
    ↓
 Nuclear-enriched genome generation
    ↓
-Functional annotation, expression analysis, and comparative genomics
+Functional annotation with Swiss-Prot, Bacillariophyta UniProtKB, InterProScan, and AntiFam
    ↓
-Final nuclear, plastid, and mitochondrial gene table for pathway curation
+Expression integration using best TransDecoder ORF-to-BRAKER4 mappings and Average_TPM only
+   ↓
+Phaeodactylum tricornutum comparison summarized as yes/no only
+   ↓
+Final clean BRAKER4 isoform-level gene table for pathway curation
 ```
 ## Software and environments
 The workflow used Conda environments, Singularity containers, and local HPC modules depending on software availability.
@@ -40,10 +44,11 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Transcriptomics | Nextflow, nf-core/metatdenovo, TransDecoder, Barrnap, STAR |
 | Genome annotation | BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, STAR, BUSCO/compleasm |
 | Functional annotation | DIAMOND, UniProtKB/Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, Pfam, PANTHER, Gene3D, CDD, SMART, SUPERFAMILY, ProSite, Python |
-| Expression integration | Python, pandas, TPM/count tables |
+| Expression integration | DIAMOND, Python, pandas, TransDecoder ORFs, Average_TPM table |
 | Comparative genomics | NCBI Datasets, BLASTN, bedtools, Python |
 ## Repository structure for scripts
-Custom Python scripts are stored in the `scripts/` directory rather than embedded directly in this markdown workflow.
+Custom Python and SLURM scripts are stored in the `scripts/` directory rather than embedded directly in this markdown workflow.
+
 ```text
 scripts/
 ├── classify_metaeuk_contigs.py
@@ -51,61 +56,48 @@ scripts/
 ├── make_bacillariophyta_best_hits.py
 ├── summarize_interproscan.py
 ├── merge_functional_annotation_layers.py
-├── merge_phaeodactylum_blast_hits.py
-├── 01_make_clean_transdecoder_to_braker_bridge.py
-├── 02_merge_TPM_to_BRAKER_ALL_HITS.py
-├── 03_merge_BRAKER_functional_annotation_with_ALL_hit_TPM.py
-├── 04_add_BRAKER_gene_lengths.py
-├── 05_add_ALL_phaeodactylum_hits.py
-├── 06_make_clean_final_nuclear_gene_table.py
-├── 07b_make_organelle_tables_and_combine_tolerant_GBK.py
-└── 08_add_organelle_curation_flags.py
+├── run_diamond_transdecoder_vs_braker_clean.slurm
+├── 07_add_BRAKER_lengths_clean.py
+├── 08_make_best_ORF_to_BRAKER_mapping_clean.py
+├── 09_add_ONLY_Average_TPM_clean.py
+└── 10_make_FINAL_clean_BRAKER_isoform_table.py
 ```
 
 Script purposes:
+
 ```text
 classify_metaeuk_contigs.py
   Classifies contigs using MetaEuk ORF-level taxonomy and a priority-based contig classification scheme.
 
 make_swissprot_best_hits.py
-  Parses Swiss-Prot DIAMOND output, calculates coverage, assigns confidence classes, and writes best-hit tables.
+  Parses Swiss-Prot DIAMOND output, calculates query and subject coverage, assigns confidence classes, and writes best-hit annotation tables.
 
 make_bacillariophyta_best_hits.py
   Parses UniProtKB Bacillariophyta DIAMOND output using the same confidence framework as the Swiss-Prot parser.
 
 summarize_interproscan.py
-  Collapses raw InterProScan TSV output to one row per predicted protein and summarizes database contributions.
+  Collapses raw InterProScan TSV output to one row per predicted protein and summarizes database contributions, GO terms, and pathway annotations.
 
 merge_functional_annotation_layers.py
-  Merges Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence into a master annotation table.
+  Merges Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence into a master BRAKER4 functional annotation table.
 
-merge_phaeodactylum_blast_hits.py
-  Merges diatom BLASTN best hits with overlapping Phaeodactylum tricornutum gene models.
+run_diamond_transdecoder_vs_braker_clean.slurm
+  Runs DIAMOND BLASTP to align TransDecoder ORFs against BRAKER4 predicted proteins.
 
-01_make_clean_transdecoder_to_braker_bridge.py
-  Parses the raw TransDecoder ORF versus BRAKER4 DIAMOND output, calculates ORF and BRAKER protein coverage, assigns mapping confidence classes, and writes all-hit, best-hit, and strict mapping tables.
+07_add_BRAKER_lengths_clean.py
+  Parses the BRAKER4 GFF3 file to add contig ID, gene model coordinates, strand, gene length, CDS length, and protein length to each BRAKER4 isoform.
 
-02_merge_TPM_to_BRAKER_ALL_HITS.py
-  Merges the transcriptome ORF average TPM table onto every TransDecoder ORF to BRAKER4 DIAMOND hit. It keeps all hits and summarizes TPM support per BRAKER4 protein.
+08_make_best_ORF_to_BRAKER_mapping_clean.py
+  Parses the raw TransDecoder ORF versus BRAKER4 DIAMOND output, calculates coverage, and keeps one best BRAKER4 hit per TransDecoder ORF.
 
-03_merge_BRAKER_functional_annotation_with_ALL_hit_TPM.py
-  Merges the BRAKER4 master functional annotation table with the all-hit transcriptome TPM summary. It adds the nuclear compartment label and creates the main expression column.
+09_add_ONLY_Average_TPM_clean.py
+  Adds `transdecoder_orf_id` and `Average_TPM` to the BRAKER4 annotation table using the best ORF-to-BRAKER mapping. It does not sum, average, or duplicate TPM values across all hits.
 
-04_add_BRAKER_gene_lengths.py
-  Parses the BRAKER4 GFF3 file to add gene model length, CDS length, contig ID, start position, end position, and strand to each predicted protein.
-
-05_add_ALL_phaeodactylum_hits.py
-  Adds all nucleotide-level gene-overlap hits to Phaeodactylum tricornutum. It summarizes all hit IDs, Phaeodactylum gene IDs, gene names, bitscores, percent identity, and e-values per Deer Lake diatom gene.
-
-06_make_clean_final_nuclear_gene_table.py
-  Creates a cleaner nuclear gene table for pathway curation by retaining the main annotation, expression, Phaeodactylum, InterProScan, Swiss-Prot, Bacillariophyta, and coordinate fields.
-
-07b_make_organelle_tables_and_combine_tolerant_GBK.py
-  Extracts CDS, tRNA, and rRNA features from chloroplast and mitochondrial GenBank files using a tolerant parser. It then combines organelle rows with the nuclear gene table.
-
-08_add_organelle_curation_flags.py
-  Adds curation flags to the combined nuclear, plastid, and mitochondrial table. It marks annotated organelle CDS, tRNA, and rRNA features as suggested to keep and flags unannotated or low-information organelle CDS rows for review.
+10_make_FINAL_clean_BRAKER_isoform_table.py
+  Creates the final clean BRAKER4 isoform-level table. It keeps one row per BRAKER4 protein isoform, adds compartment from contig ID, adds only yes/no *Phaeodactylum tricornutum* status, and removes all PT detail columns.
 ```
+
+Deprecated all-hit TPM scripts and GBK organelle-merging scripts were not used in the final clean table. The accepted final output remains BRAKER4 isoform-based and does not collapse gene IDs or append GenBank-derived organelle rows.
 
 Each script can be run from the command line in the relevant working directory, as shown in the sections below.
 
@@ -1218,7 +1210,9 @@ AntiFam flag
 The merged table combines conservative curated protein names, diatom-specific homolog support, domain-based functional evidence, GO terms, pathway annotations, and AntiFam warning flags. This makes the annotation more interpretable than any single database alone while retaining proteins without homology hits for later expression integration and manual category assignment.
 ### 14.13 Expression integration status
 
-Expression integration was completed after the master functional annotation table was generated. Transcriptome ORFs predicted by TransDecoder were aligned to the BRAKER4 protein set with DIAMOND BLASTP, and average TPM values from the transcriptome annotation table were transferred to BRAKER4 proteins through the ORF-to-BRAKER mapping. The final integration retained all DIAMOND hits rather than only strict or best hits, while keeping TPM summaries and mapped ORF IDs as supporting evidence.
+Expression integration was completed after the master functional annotation table was generated. Transcriptome ORFs predicted by TransDecoder were aligned to the BRAKER4 ET protein set using DIAMOND BLASTP. One best BRAKER4 hit was retained per TransDecoder ORF to prevent the same transcript-level `Average_TPM` value from being duplicated across multiple BRAKER4 proteins.
+
+The final expression merge used only the `Average_TPM` column from the trusted transcriptome table. No all-hit TPM sums, means, hit counts, or mapped-ORF lists were carried into the final table. If multiple TransDecoder ORFs mapped best to the same BRAKER4 protein, the ORF with the highest valid `Average_TPM` was used as the representative expression-supported ORF. The corresponding `transdecoder_orf_id` was retained next to the BRAKER4 `gene_id` for traceability.
 
 The detailed expression integration and final gene-table construction workflow is documented in Section 17.
 
@@ -1240,8 +1234,8 @@ Master functional annotation table generated
 AntiFam-flagged interpretation table generated
 AntiFam-filtered interpretation table generated
 Manual functional category scaffold generated
-Expression integration with TransDecoder ORFs and average TPM completed
-Final nuclear, plastid, and mitochondrial gene table generated
+Expression integration with TransDecoder ORFs and Average_TPM completed
+Final clean BRAKER4 isoform-level gene table generated
 ```
 
 </details>
@@ -1701,275 +1695,291 @@ This analysis provides a conservative nucleotide-level comparison between the ca
 </details> 
 
 <details>
-<summary><strong>17. Gene-level functional annotation, expression integration, and organelle table construction</strong> - BRAKER4, TransDecoder, DIAMOND, GenBank, and Python</summary>
+<summary><strong>17. Clean BRAKER4 isoform-level gene table construction</strong> - TransDecoder, DIAMOND, Average_TPM, and Phaeodactylum yes/no</summary>
 
-This section describes the construction of a final gene-level table combining nuclear BRAKER4 predictions, functional annotations, transcriptome-derived average TPM values, comparison with *Phaeodactylum tricornutum*, and organelle annotations from chloroplast and mitochondrial GenBank files. The final output was designed as a pathway-curation table with one row per nuclear predicted protein or organelle feature.
-### 17.1 Input files
-The nuclear gene table was based on the accepted BRAKER4 ET annotation:
-```bash
-/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.proteins.faa
-/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.gff3
-```
-The functional annotation table was generated from Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, and AntiFam evidence:
-```bash
-/work/ebg_lab/eb/diatom_consortia/functional_annotation_swissprot/06_combined_annotation/DL_diatom_master_functional_annotation.tsv
-```
-Transcriptome ORF proteins from TransDecoder were used to connect transcript-level expression to BRAKER4 protein IDs:
-```bash
-/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/transdecoder/rnaspades.format_header.transcript.fa.transdecoder.pep.gz
-```
-The transcriptome expression and functional category table was transferred from the local computer to ARC and used as the source of average TPM values:
-```text
-master_with_custom_broad_categories.csv
-```
-The *Phaeodactylum tricornutum* comparison used all-hit BLASTN overlap outputs:
-```bash
-/work/ebg_lab/eb/diatom_consortia/phaeodactylum_blast_18_diatom_v1/blast_out/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv
-/work/ebg_lab/eb/diatom_consortia/phaeodactylum_blast_18_diatom_v1/blast_out/blast_hit_to_phaeodactylum_gene.tsv
-```
-The organelle rows were extracted from GeSeq/GenBank files:
-```bash
-/work/ebg_lab/eb/diatom_consortia/organelle/chloro/chloroplast_contigs_core.gbk
-/work/ebg_lab/eb/diatom_consortia/organelle/mito/diatom_candidate_mitochondrion_2contigs.gbk
-```
-### 17.2 Create the working directory
-```bash
-mkdir -p /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge
-cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge
-```
-This command creates a dedicated working directory for linking TransDecoder ORFs, BRAKER4 protein IDs, TPM values, functional annotations, *Phaeodactylum* hit information, and organelle annotations.
-### 17.3 Prepare TransDecoder and BRAKER4 protein FASTA files
-```bash
-TRANSDECODER_PEP=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/transdecoder/rnaspades.format_header.transcript.fa.transdecoder.pep.gz
-BRAKER_FAA=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.proteins.faa
-```
-These variables define the transcriptome ORF protein file and the BRAKER4 predicted protein file.
-```bash
-zcat $TRANSDECODER_PEP | sed 's/\*//g' > transcriptome_orfs.transdecoder.clean.pep
-cp $BRAKER_FAA braker4_ET.proteins.faa
-```
-This command creates a local cleaned TransDecoder peptide FASTA and copies the BRAKER4 protein FASTA into the working directory. Stop codon symbols were removed from the TransDecoder peptide file before DIAMOND alignment.
-```bash
-grep -c "^>" transcriptome_orfs.transdecoder.clean.pep
-grep -c "^>" braker4_ET.proteins.faa
-```
-These commands count the number of TransDecoder ORFs and BRAKER4 proteins before alignment.
-Output:
-```text
-TransDecoder ORFs: 88,924
-BRAKER4 proteins:  16,947
-```
-### 17.4 Align TransDecoder ORFs to BRAKER4 proteins using DIAMOND
-```bash
-diamond makedb \
-    --in braker4_ET.proteins.faa \
-    -d braker4_ET.proteins
-```
-This command builds a DIAMOND database from the BRAKER4 predicted protein set.
-```bash
-diamond blastp \
-    -q transcriptome_orfs.transdecoder.clean.pep \
-    -d braker4_ET.proteins \
-    -o transcriptome_ORFs_vs_BRAKER4_ET_proteins.tsv \
-    --outfmt 6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore \
-    --max-target-seqs 10 \
-    --evalue 1e-5 \
-    --threads 16
-```
-This command aligns TransDecoder ORF proteins against BRAKER4 proteins. Up to ten hits per ORF were retained because the expression integration used all reported ORF-to-BRAKER hits rather than only the best hit.
-The output file contains:
-```text
-qseqid    TransDecoder ORF ID
-sseqid    BRAKER4 protein ID
-pident    percent identity
-length    alignment length
-qlen      ORF protein length
-slen      BRAKER protein length
-evalue    alignment e-value
-bitscore  alignment bitscore
-```
-The all-hit DIAMOND result contained:
-```text
-TransDecoder ORFs with at least one BRAKER hit: 39,717
-BRAKER4 proteins hit by at least one ORF:       14,465
-```
-
-### 17.4.1 Generate TransDecoder-to-BRAKER mapping QC tables
-```bash
-python scripts/01_make_clean_transdecoder_to_braker_bridge.py
-```
-This script parses the raw DIAMOND BLASTP output from the TransDecoder ORF versus BRAKER4 protein comparison. It calculates ORF coverage and BRAKER protein coverage for each hit, assigns mapping confidence classes, and writes all-hit, best-hit, and strict mapping tables.
-Main outputs:
-```text
-transdecoder_ORFs_vs_BRAKER4_all_hits_with_coverage.tsv
-transdecoder_ORFs_to_BRAKER4_best_hit_per_ORF.tsv
-transdecoder_ORFs_to_BRAKER4_STRICT_for_TPM_transfer.tsv
-```
-These files were used as mapping diagnostics. The final expression integration retained all DIAMOND hits rather than restricting the merge to best-hit or strict-hit mappings.
-
-### 17.5 Merge all TransDecoder-to-BRAKER hits with average TPM
-```bash
-python scripts/02_merge_TPM_to_BRAKER_ALL_HITS.py
-```
-This script merges the transcriptome expression table with every TransDecoder ORF to BRAKER4 DIAMOND hit. It keeps all reported hits and summarizes TPM values per BRAKER4 protein.
-Main outputs:
-```text
-ALL_DIAMOND_hits_TransDecoder_ORFs_to_BRAKER4_with_TPM.tsv
-BRAKER4_summary_from_ALL_TransDecoder_ORF_hits_with_TPM.tsv
-```
-The first output retains every ORF-to-BRAKER hit. The second output summarizes all transcriptome ORFs that hit each BRAKER4 protein and reports TPM summaries including maximum, mean, and summed TPM.
-The main expression column used for downstream curation was:
-```text
-all_hit_TPM_max
-```
-This value was used as the single `average_expression_TPM` field in the final table, while all-hit TPM summaries and mapped ORF IDs were retained as supporting evidence.
-### 17.6 Merge functional annotation with all-hit TPM summaries
-```bash
-python scripts/03_merge_BRAKER_functional_annotation_with_ALL_hit_TPM.py
-```
-This script merges the BRAKER4 functional annotation table with the all-hit transcriptome TPM summary. It adds the nuclear compartment label and creates the main expression column.
-Output:
-```text
-DL_diatom_BRAKER_functional_annotation_with_ALL_hit_TPM.tsv
-```
-The output contained 16,947 BRAKER4 protein rows plus one header line.
-### 17.7 Add gene, CDS, and protein lengths
-```bash
-python scripts/04_add_BRAKER_gene_lengths.py
-```
-This script parses the BRAKER4 GFF3 file and adds gene model length, CDS length, genomic coordinates, contig ID, and strand to the annotation-expression table.
-Output:
-```text
-DL_diatom_BRAKER_annotation_expression_lengths.tsv
-```
-The output contains gene/protein IDs, compartment labels, gene model length, CDS length, protein length, functional annotation, expression values, contig IDs, coordinates, and strand.
-### 17.8 Add all *Phaeodactylum tricornutum* hit information
-```bash
-python scripts/05_add_ALL_phaeodactylum_hits.py
-```
-This script uses all Deer Lake diatom to *Phaeodactylum tricornutum* BLASTN gene-overlap hits, not only best hits. It joins each BLAST hit to the corresponding *Phaeodactylum* gene model and summarizes all hits per Deer Lake diatom gene.
-Output:
-```text
-DL_diatom_BRAKER_annotation_expression_lengths_ALL_Phaeodactylum_hits.tsv
-```
-The output retained one row per BRAKER4 protein isoform and added yes/no *Phaeodactylum* status, hit counts, PHATRDRAFT gene IDs, gene names, bitscores, percent identity, and e-values.
-Result summary:
-```text
-Rows: 16,947
-Genes/protein isoforms with Phaeodactylum hits: 1,722
-Genes/protein isoforms without Phaeodactylum hits: 15,225
-```
-### 17.9 Create a clean nuclear gene table for pathway curation
-```bash
-python scripts/06_make_clean_final_nuclear_gene_table.py
-```
-This script reduces the comprehensive annotation-expression table to a cleaner set of columns for pathway curation. It keeps the major annotation, expression, *Phaeodactylum*, InterProScan, Swiss-Prot, Bacillariophyta, and genomic coordinate fields.
-Output:
-```text
-DL_diatom_final_nuclear_gene_table_for_pathway_curation.tsv
-```
-The nuclear table contains gene IDs, compartment labels, length fields, recommended annotations, average TPM, *Phaeodactylum* hit status, Swiss-Prot fields, Bacillariophyta fields, InterProScan fields, GO terms, pathway annotations, transcriptome-derived descriptions, broad categories, and genomic coordinates.
-### 17.10 Extract plastid and mitochondrial genes from GenBank files
-```bash
-python scripts/07b_make_organelle_tables_and_combine_tolerant_GBK.py
-```
-This script extracts CDS, tRNA, and rRNA features from the chloroplast and mitochondrial GenBank files. A tolerant GenBank parser was used because one chloroplast qualifier was malformed and caused the strict Biopython parser to stop. The script extracts feature coordinates, products, locus tags, gene symbols, protein lengths, and organelle compartment labels.
-Outputs:
-```text
-DL_diatom_plastid_genes_from_GBK.tsv
-DL_diatom_mito_genes_from_GBK.tsv
-DL_diatom_organelle_genes_from_GBK.tsv
-DL_diatom_final_gene_table_nuclear_plastid_mito.tsv
-```
-The combined table includes nuclear BRAKER4 proteins, plastid features, and mitochondrial features.
-Compartment counts:
-```text
-nuclear   16,947
-plastid      304
-mito         178
-```
-Feature type counts:
-```text
-plastid: 240 CDS, 12 rRNA, 52 tRNA
-mito:    125 CDS,  4 rRNA, 49 tRNA
-```
-### 17.11 Add organelle curation flags
-```bash
-python scripts/08_add_organelle_curation_flags.py
-```
-This script keeps the full nuclear, plastid, and mitochondrial table but adds curation flags for organelle features. Annotated CDS, tRNA, and rRNA features were marked as suggested to keep, while unannotated, hypothetical, or low-information organelle CDS rows were marked for review.
-Outputs:
-```text
-DL_diatom_final_gene_table_nuclear_plastid_mito_with_curation_flags.tsv
-DL_diatom_final_gene_table_nuclear_plastid_mito_curated_organelle_suggested.tsv
-DL_diatom_organelle_rows_for_manual_review.tsv
-```
-The full flagged table contained:
-```text
-17,429 rows + 1 header line = 17,430 lines
-```
-The suggested curated table contained:
-```text
-17,311 rows + 1 header line = 17,312 lines
-```
-The curated version removes or excludes 118 organelle rows marked for review from the suggested pathway-curation table, while the full table retains all rows for transparency.
-### 17.12 Final output files
-The main final table is:
-```text
-DL_diatom_final_gene_table_nuclear_plastid_mito_with_curation_flags.tsv
-```
-This is the most complete table and should be retained as the master version.
-The suggested pathway-curation table is:
-```text
-DL_diatom_final_gene_table_nuclear_plastid_mito_curated_organelle_suggested.tsv
-```
-This table keeps all nuclear rows and organelle rows with stronger annotation support.
-The manual-review table is:
-```text
-DL_diatom_organelle_rows_for_manual_review.tsv
-```
-This table contains organelle rows that should be checked before biological interpretation.
-### 17.13 Final table structure
-The final table includes:
+This section describes the final clean table construction used after rebuilding the annotation workflow from raw input files. The final output is a BRAKER4 isoform-level table with one row per predicted protein isoform. It does not collapse BRAKER4 IDs, does not append GenBank-derived organelle rows, does not use all-hit TPM summaries, and does not retain detailed *Phaeodactylum tricornutum* hit columns.
+The final table keeps:
 ```text
 gene_id
+transdecoder_orf_id
 compartment
-feature_type
-gene_model_length_bp
-cds_length_bp
-protein_length_aa
+gene_length_bp
 recommended_annotation
 recommended_annotation_source
 recommended_annotation_confidence
-average_expression_TPM
+Average_TPM
 in_Phaeodactylum_tricornutum
-has_transcriptome_ORF_hit
+Swiss-Prot evidence
+Bacillariophyta evidence
+InterProScan evidence
+GO terms
+pathway annotations
+AntiFam flags
+BRAKER4 coordinates and length fields
+```
+### 17.1 Clean rebuild directory
+A clean working directory was created to avoid carrying forward columns from older all-hit and GenBank-merging workflows.
+```bash
+mkdir -p /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
+cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
+
+mkdir -p 01_input 02_diamond 03_best_hits 05_interproscan 06_combined_annotation 07_expression 08_phaeodactylum 09_final scripts logs slurm
+```
+### 17.2 Input files
+The rebuild used the accepted BRAKER4 ET proteins and GFF3 file:
+```text
+01_input/diatom_predicted_proteins.fa
+01_input/DL_diatom.braker4.ET.proteins.faa
+01_input/DL_diatom.braker4.ET.gff3
+```
+The functional annotation layers were rebuilt from raw or core annotation files:
+```text
+02_diamond/DL_diatom_braker4_ET_vs_swissprot.tsv
+02_diamond/DL_diatom_braker4_ET_vs_uniprot_bacillariophyta.tsv
+05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
+06_combined_annotation/DL_diatom_antifam_flagged_proteins.tsv
+```
+The expression integration used cleaned TransDecoder peptides and the trusted transcriptome expression table:
+```text
+01_input/transcriptome_orfs.transdecoder.clean.pep
+07_expression/master_with_custom_broad_categories.csv
+```
+The *Phaeodactylum tricornutum* comparison used only the raw gene-overlap file for yes/no lookup:
+```text
+08_phaeodactylum/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv
+```
+The file `blast_hit_to_phaeodactylum_gene.tsv` was not required for the final clean table because no PHATRDRAFT IDs, gene names, bitscores, percent identities, or e-values were retained.
+### 17.3 Rebuild functional annotation layers
+Swiss-Prot, Bacillariophyta, and InterProScan outputs were parsed using the same scripts described in Section 14.
+```bash
+python scripts/make_swissprot_best_hits.py 2>&1 | tee swissprot_rebuild.log
+python scripts/make_bacillariophyta_best_hits.py 2>&1 | tee bacillariophyta_rebuild.log
+python scripts/summarize_interproscan.py 2>&1 | tee interproscan_rebuild.log
+```
+Each all-protein annotation file was checked to confirm one row per BRAKER4 protein isoform plus one header line:
+```bash
+wc -l 03_best_hits/DL_diatom_all_proteins_with_swissprot_annotation.tsv
+wc -l 03_best_hits/DL_diatom_all_proteins_with_bacillariophyta_annotation.tsv
+wc -l 06_combined_annotation/DL_diatom_all_proteins_with_interproscan_summary.tsv
+```
+Expected output:
+```text
+16948
+16948
+16948
+```
+The two AntiFam flags were retained as warning flags:
+```text
+g10893.t1    ANF00012    tRNA
+g11404.t1    ANF00005    Antisense to 23S rRNA
+```
+The final functional annotation merge was run with:
+```bash
+python scripts/merge_functional_annotation_layers.py 2>&1 | tee merge_functional_annotation_rebuild.log
+```
+Output:
+```text
+06_combined_annotation/DL_diatom_master_functional_annotation.tsv
+06_combined_annotation/DL_diatom_master_functional_annotation_for_manual_categories.tsv
+06_combined_annotation/DL_diatom_master_functional_annotation_summary.txt
+```
+The master annotation table contained:
+```text
+16,947 BRAKER4 predicted proteins + 1 header line = 16,948 lines
+```
+### 17.4 Add BRAKER4 gene, CDS, and protein lengths
+BRAKER4 coordinates and length fields were added from the accepted GFF3 file.
+```bash
+python scripts/07_add_BRAKER_lengths_clean.py 2>&1 | tee add_lengths_rebuild.log
+```
+Output:
+```text
+07_expression/DL_diatom_master_functional_annotation_with_lengths.tsv
+```
+Observed counts:
+
+```text
+Input annotation rows:      16,947
+GFF3 transcript rows parsed: 16,947
+Rows with gene length:       16,947
+Rows missing gene length:         0
+```
+### 17.5 Align TransDecoder ORFs to BRAKER4 proteins
+Cleaned TransDecoder peptides were aligned against the BRAKER4 ET protein set with DIAMOND BLASTP.
+```bash
+sbatch scripts/run_diamond_transdecoder_vs_braker_clean.slurm
+```
+The DIAMOND command retained up to 10 hits per TransDecoder ORF:
+```bash
+diamond blastp     -q 01_input/transcriptome_orfs.transdecoder.clean.pep     -d 07_expression/braker4_ET.proteins     -o 07_expression/transcriptome_ORFs_vs_BRAKER4_ET_proteins.tsv     --outfmt 6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore     --max-target-seqs 10     --evalue 1e-5     --threads 16
+```
+Raw DIAMOND output:
+```text
+118,472 hit rows
+39,935 unique TransDecoder ORFs with at least one BRAKER hit
+14,473 unique BRAKER proteins hit by at least one reported ORF hit
+```
+### 17.6 Create one best ORF-to-BRAKER mapping per TransDecoder ORF
+The raw DIAMOND output was parsed to calculate ORF coverage and BRAKER protein coverage. One best BRAKER4 hit was retained per TransDecoder ORF.
+```bash
+python scripts/08_make_best_ORF_to_BRAKER_mapping_clean.py 2>&1 | tee make_best_mapping_rebuild.log
+```
+Output files:
+```text
+07_expression/transdecoder_ORFs_vs_BRAKER4_all_hits_with_coverage.tsv
+07_expression/transdecoder_ORFs_to_BRAKER4_best_hit_per_ORF.tsv
+```
+Observed counts:
+```text
+Raw DIAMOND hit rows: 118,472
+Unique TransDecoder ORFs with at least one BRAKER hit: 39,935
+Unique BRAKER proteins hit by best ORF mappings: 12,277
+```
+The best-hit file contained:
+```text
+39,935 ORF mappings + 1 header line = 39,936 lines
+```
+### 17.7 Add TransDecoder ORF ID and Average_TPM only
+The trusted transcriptome table was copied into the clean rebuild folder:
+```bash
+cp ../master_with_custom_broad_categories.csv 07_expression/
+```
+Only two columns were used from this file:
+```text
+orf
+Average_TPM
+```
+Expression values were merged using the best ORF-to-BRAKER mapping. If multiple TransDecoder ORFs mapped best to the same BRAKER4 protein, the ORF with the highest valid `Average_TPM` was retained. ORFs without a valid numeric `Average_TPM` were excluded from the expression-supported ORF column so that `transdecoder_orf_id` and `Average_TPM` remain consistent.
+```bash
+python scripts/09_add_ONLY_Average_TPM_clean.py 2>&1 | tee add_average_tpm_rebuild.log
+```
+Output:
+```text
+07_expression/DL_diatom_master_functional_annotation_lengths_Average_TPM.tsv
+```
+Final expression integration counts:
+```text
+Annotation rows: 16,947
+Best ORF-to-BRAKER rows: 39,935
+BRAKER proteins with Average_TPM: 12,276
+BRAKER proteins without Average_TPM: 4,671
+BRAKER proteins with TransDecoder ORF ID: 12,276
+BRAKER proteins without TransDecoder ORF ID: 4,671
+```
+The output retained all 16,947 BRAKER4 isoforms and added:
+```text
+transdecoder_orf_id
+Average_TPM
+```
+No all-hit TPM sums, means, hit counts, or mapped ORF lists were retained.
+### 17.8 Add Phaeodactylum yes/no only
+The raw *Phaeodactylum tricornutum* comparison file contains detailed BLASTN overlap fields, but the final clean table used it only as a yes/no lookup.
+```text
+08_phaeodactylum/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv
+```
+The file contains gene roots such as:
+```text
+g8700
+g8702
+g14082
+```
+The final BRAKER4 table keeps isoform IDs such as:
+```text
+g8700.t1
+g8702.t1
+```
+Therefore, the script used the root only for lookup while preserving the full BRAKER4 isoform ID in the final table. The only PT-derived output column is:
+```text
+in_Phaeodactylum_tricornutum
+```
+Detailed PT columns such as `blast_hit_id`, `pt_gene_id`, `pt_gene_name`, `bitscore`, `pident`, and `evalue` were not retained.
+### 17.9 Create final clean BRAKER4 isoform-level table
+```bash
+python scripts/10_make_FINAL_clean_BRAKER_isoform_table.py 2>&1 | tee make_final_clean_table.log
+```
+Output files:
+```text
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_sorted_by_Average_TPM.tsv
+```
+Both final files contained:
+```text
+16,947 BRAKER4 isoform rows + 1 header line = 16,948 lines
+```
+Final compartment counts:
+```text
+nuclear        16,873
+plastid_like       72
+mito_like           2
+```
+The compartment labels were assigned from BRAKER4 contig IDs only. No GenBank organelle rows were appended.
+Final *Phaeodactylum tricornutum* yes/no counts:
+```text
+no     15,225
+yes     1,722
+```
+The script also confirmed:
+```text
+PT detail columns found: []
+```
+### 17.10 Final table structure
+The final clean table begins with:
+```text
+gene_id
+transdecoder_orf_id
+compartment
+gene_length_bp
+recommended_annotation
+recommended_annotation_source
+recommended_annotation_confidence
+Average_TPM
+in_Phaeodactylum_tricornutum
+```
+`gene_id` is the original BRAKER4 protein isoform ID and is not collapsed to the gene root. `transdecoder_orf_id` is the TransDecoder ORF that contributed the expression value for that BRAKER4 isoform. This column is included for traceability between the transcriptome assembly and the BRAKER4 gene model.
+
+The `transdecoder_orf_id` column is populated only when the mapped ORF has a valid numeric `Average_TPM`. If a TransDecoder ORF maps to a BRAKER4 protein but does not have a usable `Average_TPM`, both `transdecoder_orf_id` and `Average_TPM` are left blank in the final output. This prevents the table from showing an ORF ID that did not contribute an expression value.
+
+If multiple TransDecoder ORFs map best to the same BRAKER4 isoform, the ORF with the highest valid `Average_TPM` is retained. TPM values are not summed, averaged, or duplicated across all DIAMOND hits.
+The final table therefore reports:
+```text
+one BRAKER4 isoform row
+one representative TransDecoder ORF ID when expression support is available
+one Average_TPM value
+one Phaeodactylum tricornutum yes/no value
+```
+The remaining columns retain the functional annotation evidence and BRAKER4 coordinate fields:
+```text
 has_any_annotation
 has_swissprot_hit
 has_bacillariophyta_hit
 has_interproscan_hit
 has_antifam_flag
-gene_symbol
-product
-locus_tag
-protein_id
+antifam_accession
+antifam_description
+antifam_flag
+Swiss-Prot fields
+Bacillariophyta fields
+InterProScan fields
+GO terms
+pathway annotations
 contig_id
 gene_model_start
 gene_model_end
 strand
-all-hit TPM fields
-Phaeodactylum hit fields
-Swiss-Prot annotation fields
-Bacillariophyta annotation fields
-InterProScan annotation fields
-GO terms
-pathway annotations
-transcriptome-derived descriptions and broad categories
-curation_status
-keep_suggested
-curation_note
+cds_length_bp
+protein_length_aa
 ```
+### 17.11 Final output files
+The main final table is:
+```text
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
+```
+The expression-sorted version is:
+```text
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_sorted_by_Average_TPM.tsv
+```
+The sorted file is useful for manual inspection and pathway curation because highly expressed genes appear first. The unsorted file should be retained as the master output.
 #### Logic
-This workflow links predicted diatom genes to functional annotation, expression evidence, comparative genomic evidence, and organelle gene annotations. Nuclear proteins were annotated using the BRAKER4 functional annotation table, expression values were transferred from TransDecoder ORFs through all DIAMOND hits to BRAKER4 proteins, and *Phaeodactylum tricornutum* similarity was summarized using all gene-overlap hits. Plastid and mitochondrial features were added from GenBank annotations so that nuclear and organelle genes could be curated in a single table.
+This clean workflow links BRAKER4-predicted diatom proteins to functional annotation, transcriptome expression, and comparative genomic evidence without inflating expression values or adding unnecessary PT detail columns. `Average_TPM` is transferred through a best TransDecoder ORF-to-BRAKER4 mapping, and the TransDecoder ORF ID used for expression is retained next to the BRAKER4 gene ID. *Phaeodactylum tricornutum* similarity is summarized only as yes/no, and the final table remains one row per BRAKER4 protein isoform.
 
 </details>
