@@ -1172,9 +1172,9 @@ InterProScan summary by protein completed
 InterProScan database contribution summary completed
 AntiFam screen completed
 ```
-<details>
-
 </details>
+
+<details>
 <summary><strong>15. Nuclear-enriched genome generation</strong> - organelle contig removal and BRAKER4 annotation filtering</summary>
 
 ### 15.1 Input files
