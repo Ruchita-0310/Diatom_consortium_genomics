@@ -1807,7 +1807,27 @@ Rows missing gene length:         0
 ### 17.5 Align TransDecoder ORFs to BRAKER4 proteins
 Cleaned TransDecoder peptides were aligned against the BRAKER4 ET protein set with DIAMOND BLASTP.
 ```bash
-sbatch scripts/run_diamond_transdecoder_vs_braker_clean.slurm
+set -euo pipefail
+
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate swissprot_annot
+
+cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
+
+mkdir -p 07_expression logs
+
+diamond makedb \
+    --in 01_input/diatom_predicted_proteins.fa \
+    -d 07_expression/braker4_ET.proteins
+
+diamond blastp \
+    -q 01_input/transcriptome_orfs.transdecoder.clean.pep \
+    -d 07_expression/braker4_ET.proteins \
+    -o 07_expression/transcriptome_ORFs_vs_BRAKER4_ET_proteins.tsv \
+    --outfmt 6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore \
+    --max-target-seqs 10 \
+    --evalue 1e-5 \
+    --threads 16
 ```
 The DIAMOND command retained up to 10 hits per TransDecoder ORF:
 ```bash
