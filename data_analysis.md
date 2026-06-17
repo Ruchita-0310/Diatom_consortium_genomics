@@ -47,7 +47,7 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Expression integration | DIAMOND, Python, pandas, TransDecoder ORFs, Average_TPM table |
 | Comparative genomics | NCBI Datasets, BLASTN, bedtools, Python |
 ## Repository structure for scripts
-Custom Python and SLURM scripts are stored in the `scripts/` directory rather than embedded directly in this markdown workflow.
+Custom Python scripts are stored in the `scripts/` directory rather than embedded directly in this markdown workflow.
 
 ```text
 scripts/
@@ -56,7 +56,6 @@ scripts/
 ├── make_bacillariophyta_best_hits.py
 ├── summarize_interproscan.py
 ├── merge_functional_annotation_layers.py
-├── run_diamond_transdecoder_vs_braker_clean.slurm
 ├── 07_add_BRAKER_lengths_clean.py
 ├── 08_make_best_ORF_to_BRAKER_mapping_clean.py
 ├── 09_add_ONLY_Average_TPM_clean.py
@@ -80,9 +79,6 @@ summarize_interproscan.py
 
 merge_functional_annotation_layers.py
   Merges Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence into a master BRAKER4 functional annotation table.
-
-run_diamond_transdecoder_vs_braker_clean.slurm
-  Runs DIAMOND BLASTP to align TransDecoder ORFs against BRAKER4 predicted proteins.
 
 07_add_BRAKER_lengths_clean.py
   Parses the BRAKER4 GFF3 file to add contig ID, gene model coordinates, strand, gene length, CDS length, and protein length to each BRAKER4 isoform.
