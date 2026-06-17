@@ -161,7 +161,7 @@ busco \
 </details>
 
 <details>
-<summary><strong>4. Metagenomic binning with MetaBAT2</strong> - MetaBAT2</summary>
+<summary><strong>4. Metagenomic binning</strong> - MetaBAT2</summary>
 
 MetaBAT2 was used to recover genome bins from the polished assembly using Nanopore read coverage.
 ### 4.1 Install MetaBAT2
@@ -203,7 +203,7 @@ The resulting bins were used for quality assessment and taxonomic classification
 </details>
 
 <details>
-<summary><strong>5. Bin quality assessment with CheckM2</strong> - CheckM2</summary>
+<summary><strong>5. Bin quality assessment</strong> - CheckM2</summary>
 
 CheckM2 was used to estimate completeness and contamination of recovered genome bins.
 ```bash
@@ -216,7 +216,7 @@ checkm2 predict \
 </details>
 
 <details>
-<summary><strong>6. Taxonomic classification with GTDB-Tk</strong> - GTDB-Tk</summary>
+<summary><strong>6. Taxonomic classification</strong> - GTDB-Tk</summary>
 
 GTDB-Tk was used to assign bacterial and archaeal taxonomy to recovered genome bins using the Genome Taxonomy Database.
 ```bash
