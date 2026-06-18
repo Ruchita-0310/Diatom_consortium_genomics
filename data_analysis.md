@@ -1828,7 +1828,6 @@ diamond blastp \
     --evalue 1e-5 \
     --threads 16
 ```
-```
 Raw DIAMOND output:
 ```text
 118,472 hit rows
