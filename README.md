@@ -44,7 +44,6 @@ Final clean BRAKER4 isoform-level gene table
     ├── make_bacillariophyta_best_hits.py
     ├── summarize_interproscan.py
     ├── merge_functional_annotation_layers.py
-    ├── run_diamond_transdecoder_vs_braker_clean.slurm
     ├── 07_add_BRAKER_lengths_clean.py
     ├── 08_make_best_ORF_to_BRAKER_mapping_clean.py
     ├── 09_add_ONLY_Average_TPM_clean.py
