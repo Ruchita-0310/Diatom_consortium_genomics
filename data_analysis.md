@@ -1693,6 +1693,7 @@ This analysis provides a conservative nucleotide-level comparison between the ca
 <details>
 <summary><strong>17. Clean BRAKER4 isoform-level gene table construction</strong> - TransDecoder, DIAMOND, Average_TPM, and Phaeodactylum yes/no</summary>
 
+
 This section describes the final clean table construction used after rebuilding the annotation workflow from raw input files. The final output is a BRAKER4 isoform-level table with one row per predicted protein isoform. It does not collapse BRAKER4 IDs, does not append GenBank-derived organelle rows, does not use all-hit TPM summaries, and does not retain detailed *Phaeodactylum tricornutum* hit columns.
 The final table keeps:
 ```text
