@@ -1816,7 +1816,9 @@ mkdir -p 07_expression logs
 diamond makedb \
     --in 01_input/diatom_predicted_proteins.fa \
     -d 07_expression/braker4_ET.proteins
-
+```
+The DIAMOND command retained up to 10 hits per TransDecoder ORF:
+```
 diamond blastp \
     -q 01_input/transcriptome_orfs.transdecoder.clean.pep \
     -d 07_expression/braker4_ET.proteins \
@@ -1826,9 +1828,6 @@ diamond blastp \
     --evalue 1e-5 \
     --threads 16
 ```
-The DIAMOND command retained up to 10 hits per TransDecoder ORF:
-```bash
-diamond blastp     -q 01_input/transcriptome_orfs.transdecoder.clean.pep     -d 07_expression/braker4_ET.proteins     -o 07_expression/transcriptome_ORFs_vs_BRAKER4_ET_proteins.tsv     --outfmt 6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore     --max-target-seqs 10     --evalue 1e-5     --threads 16
 ```
 Raw DIAMOND output:
 ```text
