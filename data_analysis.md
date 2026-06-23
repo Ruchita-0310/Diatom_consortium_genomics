@@ -94,7 +94,6 @@ merge_functional_annotation_layers.py
 
 10_make_FINAL_clean_BRAKER_isoform_table.py
   Creates the final clean BRAKER4 isoform-level table. It keeps one row per BRAKER4 protein isoform, adds compartment from contig ID, adds only yes/no *Phaeodactylum tricornutum* status, and removes all PT detail columns.
-
 ```
 
 Deprecated all-hit TPM scripts and GBK organelle-merging scripts were not used in the final clean table. The accepted final output remains BRAKER4 isoform-based and does not collapse gene IDs or append GenBank-derived organelle rows.
