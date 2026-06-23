@@ -1,5 +1,5 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, comparison with the reference diatom *Phaeodactylum tricornutum*, and Hi-C read mapping to assess contig-level representation in the proximity-ligation dataset. The final gene table is a clean BRAKER4 isoform-level table with one row per predicted protein isoform.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, comparison with the reference diatom *Phaeodactylum tricornutum*, and Hi-C read mapping/contact-network analysis to assess contig-level representation and proximal-ligation links in the Hi-C dataset. The final gene table is a clean BRAKER4 isoform-level table with one row per predicted protein isoform.
 ## Workflow overview
 ```text
 Nanopore reads
@@ -33,6 +33,8 @@ Final clean BRAKER4 isoform-level gene table for pathway curation
 Hi-C read mapping to polished whole assembly
    ↓
 Contig-level Hi-C representation summary
+   ↓
+Hi-C proximal-ligation contact network
 ```
 ## Software and environments
 The workflow used Conda environments, Singularity containers, and local HPC modules depending on software availability.
@@ -50,7 +52,7 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Functional annotation | DIAMOND, UniProtKB/Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, Pfam, PANTHER, Gene3D, CDD, SMART, SUPERFAMILY, ProSite, Python |
 | Expression integration | DIAMOND, Python, pandas, TransDecoder ORFs, Average_TPM table |
 | Comparative genomics | NCBI Datasets, BLASTN, bedtools, Python |
-| Hi-C mapping and contig representation | FastQC, MultiQC, BWA-MEM, samtools, seqkit, YaHS, awk |
+| Hi-C mapping and contact network | FastQC, MultiQC, BWA-MEM, samtools, seqkit, YaHS, awk, Gephi |
 ## Repository structure for scripts
 Custom Python scripts are stored in the `scripts/` directory rather than embedded directly in this markdown workflow.
 
@@ -2002,62 +2004,53 @@ This clean workflow links BRAKER4-predicted diatom proteins to functional annota
 </details>
 
 <details>
-<summary><strong>18. Hi-C read mapping and contig-level representation</strong> - BWA-MEM and samtools</summary>
+<summary><strong>18. Hi-C read mapping and contig-level proximity-ligation network</strong> - BWA-MEM, samtools, awk, YaHS, and Gephi</summary>
 
-Hi-C paired-end reads were mapped to the polished whole assembly to determine how many assembly contigs were represented in the proximity-ligation dataset. This step used read mapping rather than BLAST because the immediate goal was to count contigs receiving Hi-C read support and summarize mate-pair signal across assembly contigs.
-### 18.1 Input files
+Hi-C paired-end reads were incorporated after the main assembly, annotation, expression, and comparative-genomics workflow to assess how broadly the polished whole assembly was represented in the proximity-ligation dataset and to identify contigs connected by Hi-C read pairs. The Hi-C analysis was performed on the polished whole assembly rather than the nuclear-enriched subset because the initial goal was to determine how many assembly contigs were represented and which contigs were proximally ligated.
+
+### 18.1 Input files and working directories
 ```bash
+cd /work/ebg_lab/eb/diatom_consortia
+
+mkdir -p hi-c_diatoms/01_qc
+mkdir -p hi-c_diatoms/02_map_to_whole_assembly
+mkdir -p hi-c_diatoms/03_yahs_scaffolding
+mkdir -p hi-c_diatoms/04_contact_maps
+```
+Input Hi-C reads:
+```text
+/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R1_001.fastq.gz
+/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R2_001.fastq.gz
+```
+Input polished whole assembly:
+```text
+/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta
+```
+### 18.2 Map Hi-C reads to the polished whole assembly
+The original assembly directory was not writable by the Hi-C job, so the assembly was linked into the Hi-C working directory and indexed there.
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
+
 ASM_ORIG=/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta
-R1=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R1_001.fastq.gz
-R2=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R2_001.fastq.gz
-OUT=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
+ASM_LOCAL=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly/pypolca_corrected.hic_input.fasta
+
+ln -sfn $ASM_ORIG $ASM_LOCAL
 ```
-### 18.2 Working directory
-
 ```bash
-mkdir -p /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/01_qc
-mkdir -p /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
-mkdir -p /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/03_yahs_scaffolding
-mkdir -p /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/04_contact_maps
-```
-### 18.3 Software environment
-```bash
-conda create -n hic_diatom -c conda-forge -c bioconda bwa samtools seqkit fastqc multiqc yahs -y
-conda activate hic_diatom
-```
-### 18.4 Raw Hi-C read QC
-```bash
-fastqc -t 8 \
-    /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R1_001.fastq.gz \
-    /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R2_001.fastq.gz \
-    -o /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/01_qc
-
-multiqc /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/01_qc \
-    -o /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/01_qc
-```
-Logic: FastQC checks the quality of each Hi-C FASTQ file, and MultiQC combines both reports into one summary.
-
-### 18.5 Link and index the assembly locally
-The original assembly directory was not writable for BWA and samtools index files. To avoid changing the original assembly folder, the assembly was linked into the Hi-C mapping directory and indexed there.
-```bash
-cd $OUT
-
-ASM_LOCAL=${OUT}/pypolca_corrected.hic_input.fasta
-ln -sfn ${ASM_ORIG} ${ASM_LOCAL}
-
-bwa index ${ASM_LOCAL}
-samtools faidx ${ASM_LOCAL}
+bwa index $ASM_LOCAL
+samtools faidx $ASM_LOCAL
 cut -f1,2 ${ASM_LOCAL}.fai > pypolca_corrected.chrom.sizes
 ```
-Logic: the local symbolic link lets BWA and samtools write index files in the Hi-C working directory instead of the original assembly directory.
-### 18.6 Map Hi-C reads to the polished whole assembly
+Logic: index the assembly for BWA and samtools, and save contig lengths for downstream contact-table annotation.
 ```bash
-bwa mem -SP5M -t 24 ${ASM_LOCAL} ${R1} ${R2} \
+R1=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R1_001.fastq.gz
+R2=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R2_001.fastq.gz
+
+bwa mem -SP5M -t 24 $ASM_LOCAL $R1 $R2 \
     | samtools view -@ 8 -bS - \
     > hic_to_whole_assembly.raw.bam
 ```
-Logic: BWA-MEM maps paired-end Hi-C reads to the polished assembly, and samtools converts the SAM stream to BAM.
-### 18.7 Sort and index the BAM file
+Logic: map paired Hi-C reads to the polished whole assembly using BWA-MEM with Hi-C-compatible settings.
 ```bash
 samtools sort -@ 24 -n \
     -o hic_to_whole_assembly.name_sorted.bam \
@@ -2069,32 +2062,25 @@ samtools sort -@ 24 \
 
 samtools index hic_to_whole_assembly.coord_sorted.bam
 ```
-Logic: the name-sorted BAM is retained for Hi-C tools, while the coordinate-sorted and indexed BAM is used for mapping summaries.
-### 18.8 Summarize read-level mapping
+Logic: create a name-sorted BAM for paired-read contact extraction and a coordinate-sorted BAM for mapping summaries.
 ```bash
 samtools flagstat hic_to_whole_assembly.coord_sorted.bam \
     > hic_to_whole_assembly.flagstat.txt
 
 samtools idxstats hic_to_whole_assembly.coord_sorted.bam \
     > hic_to_whole_assembly.idxstats.txt
-
-samtools stats hic_to_whole_assembly.coord_sorted.bam \
-    > hic_to_whole_assembly.samtools_stats.txt
 ```
-Logic: these commands summarize overall read mapping, contig-level mapped-read counts, and detailed BAM statistics.
-The read-level mapping summary was:
+Logic: summarize read-level mapping statistics and contig-level mapped-read counts.
+Read-level mapping summary:
 ```text
-1,071,642 total alignment records
-890,810 primary reads
-803,799 mapped alignment records
-622,967 primary mapped reads
-69.93% primary read mapping rate
-568,948 reads with itself and mate mapped
-54,019 singletons
-262,966 reads with mate mapped to a different contig
-95,093 reads with mate mapped to a different contig at MAPQ >= 5
+Primary reads:              890,810
+Primary mapped reads:       622,967
+Primary mapping rate:       69.93%
+All mapped alignments:      803,799 / 1,071,642 = 75.01%
+Read pairs:                 445,405
+Singletons:                 54,019 reads = 6.06%
 ```
-### 18.9 Create a contig-level Hi-C mapping presence table
+### 18.3 Summarize contig-level Hi-C representation
 ```bash
 awk 'BEGIN {
     OFS="\t";
@@ -2106,34 +2092,7 @@ $1!="*" {
 }' hic_to_whole_assembly.idxstats.txt \
 > hic_contig_mapping_presence.tsv
 ```
-Logic: this converts `samtools idxstats` into a yes/no table showing whether each assembly contig had at least one Hi-C read mapped.
-### 18.10 Count how many assembly contigs mapped to Hi-C reads
-```bash
-awk '
-$1!="*" {
-    total++;
-    if ($3 > 0) mapped++;
-}
-END {
-    unmapped = total - mapped;
-    printf "Total contigs: %d\n", total;
-    printf "Contigs with >=1 Hi-C read mapped: %d\n", mapped;
-    printf "Contigs with 0 Hi-C reads mapped: %d\n", unmapped;
-    printf "Percent contigs with Hi-C reads mapped: %.2f%%\n", (mapped/total)*100;
-}
-' hic_to_whole_assembly.idxstats.txt
-```
-Logic: this counts the number and percentage of assembly contigs represented by at least one mapped Hi-C read.
-
-The contig-level mapping summary was:
-
-```text
-Total contigs: 4,925
-Contigs with >=1 Hi-C read mapped: 4,010
-Contigs with 0 Hi-C reads mapped: 915
-Percent contigs with Hi-C reads mapped: 81.42%
-```
-### 18.11 Save the Hi-C mapping summary
+Logic: classify each assembly contig as represented in the Hi-C dataset if at least one Hi-C read mapped to it.
 ```bash
 {
     echo "Hi-C contig mapping summary"
@@ -2164,66 +2123,271 @@ Percent contigs with Hi-C reads mapped: 81.42%
     cat hic_to_whole_assembly.flagstat.txt
 } > hic_contig_mapping_summary.txt
 ```
-Logic: this writes the main Hi-C result into one text file containing the input paths, contig-level counts, and read-level mapping statistics.
-### 18.12 Extract inter-contig Hi-C contacts
-```bash
-BAM=hic_to_whole_assembly.coord_sorted.bam
-
-{
-    echo -e "contig_A\tcontig_B\tcontact_read_records\tapprox_contact_pairs"
-
-    samtools view -@ 8 -q 5 -F 2316 ${BAM} \
-        | awk 'BEGIN{OFS="\t"} 
-               $3!="*" && $7!="*" && $7!="=" {
-                   a=$3; b=$7;
-                   if (a < b) print a,b;
-                   else print b,a;
-               }' \
-        | sort -S 20G \
-        | uniq -c \
-        | awk 'BEGIN{OFS="\t"} {print $2,$3,$1,$1/2}' \
-        | sort -k4,4nr
-} > hic_intercontig_contacts_MAPQ5.tsv
+Logic: create one readable summary file combining contig-level representation and read-level mapping statistics.
+Contig-level Hi-C representation:
+```text
+Total contigs: 4,925
+Contigs with >=1 Hi-C read mapped: 4,010
+Contigs with 0 Hi-C reads mapped: 915
+Percent contigs with Hi-C reads mapped: 81.42%
 ```
-Logic: this extracts MAPQ >= 5 read records whose mates map to different contigs and counts support for each contig pair.
+### 18.4 Exploratory whole-assembly Hi-C scaffolding with YaHS
+Whole-assembly Hi-C scaffolding was tested with YaHS as an exploratory step. Because the assembly represents a consortium, this result was treated cautiously and was not used as the final Hi-C integration output.
 
-### 18.13 Exploratory whole-assembly scaffolding with YaHS
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/03_yahs_scaffolding
 
-yahs \
-    -o DL_diatom_whole_hic_yahs \
-    /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly/pypolca_corrected.hic_input.fasta \
-    /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly/hic_to_whole_assembly.name_sorted.bam
+ASM=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly/pypolca_corrected.hic_input.fasta
+BAM=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly/hic_to_whole_assembly.name_sorted.bam
 
+yahs -o DL_diatom_whole_hic_yahs $ASM $BAM
+```
+Logic: test whether Hi-C read pairs could scaffold the polished whole assembly.
+```bash
 seqkit stats \
-    /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly/pypolca_corrected.hic_input.fasta \
+    $ASM \
     DL_diatom_whole_hic_yahs_scaffolds_final.fa \
     > DL_diatom_whole_hic_yahs.seqkit_stats.txt
 ```
-Logic: YaHS was used as an exploratory test of whether Hi-C contacts could improve whole-assembly scaffolding, and seqkit compared assembly statistics before and after scaffolding.
-The exploratory YaHS output was:
+
+Logic: compare the polished input assembly with the YaHS scaffolded output.
+YaHS scaffold summary:
 ```text
-Input polished assembly:       4,925 contigs, 189,915,395 bp, max length 5,424,378 bp
-YaHS scaffolded output:        5,032 sequences, 189,915,395 bp, max length 5,424,378 bp
+Input assembly:
+4,925 contigs
+189,915,395 bp
+maximum contig length: 5,424,378 bp
+
+YaHS output:
+5,032 scaffolds
+189,915,395 bp
+maximum scaffold length: 5,424,378 bp
 ```
-YaHS did not increase the maximum scaffold length and increased the number of output sequences. Therefore, the whole-assembly YaHS result was treated as exploratory rather than as a final scaffolded assembly.
-### 18.14 Final Hi-C outputs
+The YaHS run did not increase maximum scaffold length and increased the number of sequences. Therefore, the whole-assembly YaHS output was treated as exploratory rather than as a final scaffolded assembly.
+### 18.5 Extract all-primary inter-contig Hi-C contacts
+The final contig-contact analysis used primary mapped Hi-C read pairs without applying a MAPQ cutoff. Unmapped reads, mate-unmapped reads, secondary alignments, and supplementary alignments were excluded. Each read pair was counted once if the two mates mapped to different contigs.
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
+
+BAM=hic_to_whole_assembly.name_sorted.bam
+
+samtools view -@ 8 -f 1 -F 2316 $BAM \
+    | awk 'BEGIN{OFS="\t"}
+    {
+        q=$1
+        r=$3
+
+        if (prev != "" && q != prev) {
+            if (n == 2 && contig[1] != contig[2]) {
+                a=contig[1]
+                b=contig[2]
+
+                if (a > b) {
+                    tmp=a
+                    a=b
+                    b=tmp
+                }
+
+                print a,b
+            }
+
+            delete contig
+            n=0
+        }
+
+        prev=q
+        n++
+
+        if (n <= 2) {
+            contig[n]=r
+        }
+    }
+    END {
+        if (n == 2 && contig[1] != contig[2]) {
+            a=contig[1]
+            b=contig[2]
+
+            if (a > b) {
+                tmp=a
+                a=b
+                b=tmp
+            }
+
+            print a,b
+        }
+    }' \
+    | sort -S 20G \
+    | uniq -c \
+    | awk 'BEGIN{OFS="\t"; print "contig_A","contig_B","HiC_contact_pairs"}
+           {print $2,$3,$1}' \
+    | sort -k3,3nr \
+    > hic_intercontig_contacts_all_primary_pairs.tsv
+```
+Logic: extract contig-to-contig Hi-C proximity-ligation contacts from primary mapped read pairs without applying a MAPQ cutoff.
+```bash
+awk 'BEGIN{OFS="\t"}
+NR==FNR {
+    len[$1]=$2
+    next
+}
+FNR==1 {
+    print $0,"len_A","len_B"
+    next
+}
+{
+    print $0,len[$1],len[$2]
+}' pypolca_corrected.chrom.sizes \
+   hic_intercontig_contacts_all_primary_pairs.tsv \
+   > hic_intercontig_contacts_all_primary_pairs.with_lengths.tsv
+```
+Logic: add contig lengths to the full inter-contig contact table.
+The main contact table reports:
 ```text
-hic_to_whole_assembly.raw.bam
-hic_to_whole_assembly.name_sorted.bam
-hic_to_whole_assembly.coord_sorted.bam
-hic_to_whole_assembly.coord_sorted.bam.bai
-hic_to_whole_assembly.flagstat.txt
-hic_to_whole_assembly.idxstats.txt
-hic_contig_mapping_presence.tsv
-hic_contig_mapping_summary.txt
-hic_intercontig_contacts_MAPQ5.tsv
-DL_diatom_whole_hic_yahs_scaffolds_final.fa
-DL_diatom_whole_hic_yahs_scaffolds_final.agp
-DL_diatom_whole_hic_yahs.seqkit_stats.txt
+contig_A
+contig_B
+Hi-C contact pairs
+length of contig_A
+length of contig_B
 ```
-#### Logic
-Hi-C reads mapped to most contigs in the polished whole assembly. Of 4,925 assembly contigs, 4,010 had at least one Hi-C read mapped, corresponding to 81.42% of contigs. At the read level, 622,967 of 890,810 primary Hi-C reads mapped to the assembly, giving a primary mapping rate of 69.93%. Inter-contig Hi-C signal was also detected, including 95,093 MAPQ >= 5 read records whose mates mapped to different contigs. Exploratory YaHS scaffolding did not improve whole-assembly contiguity, so the main accepted result from this step is contig-level Hi-C representation and inter-contig contact evidence rather than a final Hi-C-scaffolded genome assembly.
+Each row represents one pair of contigs connected by Hi-C proximity-ligation evidence.
+### 18.6 Summarize connected contigs
+```bash
+awk 'NR>1 {print $1; print $2}' \
+    hic_intercontig_contacts_all_primary_pairs.tsv \
+    | sort -u \
+    > hic_connected_contigs_all_primary_pairs.txt
+```
+Logic: list every contig involved in at least one inter-contig Hi-C contact.
+```bash
+{
+    echo -e "contig\tnumber_of_connected_contigs\ttotal_intercontig_HiC_pairs\tstrongest_single_contact_pairs"
+
+    awk 'BEGIN{OFS="\t"}
+    NR==1 {next}
+    {
+        a=$1
+        b=$2
+        pairs=$3
+
+        if (!(a SUBSEP b in seen)) {
+            seen[a SUBSEP b]=1
+            degree[a]++
+            degree[b]++
+        }
+
+        total_pairs[a]+=pairs
+        total_pairs[b]+=pairs
+
+        if (pairs > max_pair[a]) max_pair[a]=pairs
+        if (pairs > max_pair[b]) max_pair[b]=pairs
+    }
+    END {
+        for (c in total_pairs) {
+            print c,degree[c],total_pairs[c],max_pair[c]
+        }
+    }' hic_intercontig_contacts_all_primary_pairs.tsv \
+    | sort -k3,3nr
+} > hic_contig_connectivity_summary_all_primary_pairs.tsv
+```
+Logic: summarize each connected contig by the number of partner contigs, total inter-contig Hi-C pairs, and strongest single contig-to-contig contact.
+Final all-primary contact-network summary:
+```text
+Connected contigs: 3,770
+Inter-contig Hi-C links: 75,703
+```
+### 18.7 Convert the contact table to network files
+The full contig-contact table was converted into network formats for visualization. A small helper Python script was used only for file conversion; it was not part of the read-mapping or contact-extraction workflow. The script read `hic_intercontig_contacts_all_primary_pairs.tsv` and exported the network as GEXF and GraphML files.
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
+python make_hic_network_gexf_graphml.py
+```
+Logic: convert the tabular Hi-C contig-contact file into GEXF and GraphML network files that can be opened in Gephi or other graph viewers.
+The script generated:
+```text
+hic_contig_network_all_primary_pairs.gexf
+hic_contig_network_all_primary_pairs.graphml
+```
+The final network contained:
+```text
+Nodes: 3,770 contigs
+Edges: 75,703 inter-contig Hi-C links
+```
+In this network:
+```text
+Node = assembly contig
+Edge = Hi-C proximity-ligation contact between two contigs
+Edge weight = number of Hi-C read pairs supporting the contig-to-contig connection
+```
+### 18.8 Visualize the Hi-C contig-contact network
+The GEXF file was used for visualization in Gephi:
+```text
+hic_contig_network_all_primary_pairs.gexf
+```
+Recommended Gephi settings:
+```text
+Layout: ForceAtlas2
+Adjust sizes: on
+Barnes-Hut optimize: on
+LinLog mode: on
+Scaling ratio: 10–30
+Edge weight influence: 0.2–1
+Labels: off
+```
+Logic: use a force-directed layout to visualize contigs as nodes and Hi-C proximity-ligation contacts as weighted edges.
+Recommended styling:
+```text
+Node size: small constant size
+Node color: modularity class or constant color
+Edge size: constant thin edge or scaled by HiC_contact_pairs
+Edge color: light grey
+Labels: off
+```
+Figure interpretation:
+```text
+Nodes represent contigs.
+Edges represent inter-contig Hi-C proximity-ligation contacts.
+Edge weight represents the number of Hi-C read pairs supporting each contig-to-contig connection.
+```
+### 18.9 Organize final Hi-C outputs
+After generating the final mapping and contact-network outputs, files were organized into final mapping and contact-map folders.
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms
+
+mkdir -p 02_map_to_whole_assembly/final_mapping
+mkdir -p 04_contact_maps/tables
+mkdir -p 04_contact_maps/network_files
+mkdir -p 04_contact_maps/scripts
+```
+Final mapping files:
+```text
+02_map_to_whole_assembly/final_mapping/
+├── hic_to_whole_assembly.flagstat.txt
+├── hic_to_whole_assembly.idxstats.txt
+├── hic_contig_mapping_summary.txt
+├── hic_contig_mapping_presence.tsv
+├── hic_to_whole_assembly.name_sorted.bam
+├── hic_to_whole_assembly.coord_sorted.bam
+├── hic_to_whole_assembly.coord_sorted.bam.bai
+└── pypolca_corrected.chrom.sizes
+```
+Final contact-network files:
+```text
+04_contact_maps/
+├── tables/
+│   ├── hic_intercontig_contacts_all_primary_pairs.tsv
+│   ├── hic_intercontig_contacts_all_primary_pairs.with_lengths.tsv
+│   ├── hic_connected_contigs_all_primary_pairs.txt
+│   └── hic_contig_connectivity_summary_all_primary_pairs.tsv
+├── network_files/
+│   ├── hic_contig_network_all_primary_pairs.gexf
+│   └── hic_contig_network_all_primary_pairs.graphml
+└── scripts/
+    └── make_hic_network_gexf_graphml.py
+```
+### 18.10 Final Hi-C analysis summary
+Hi-C reads mapped to 4,010 of 4,925 contigs in the polished whole assembly, corresponding to 81.42% of assembly contigs. At the read level, 622,967 of 890,810 primary reads mapped to the assembly, corresponding to a primary mapping rate of 69.93%.
+
+Inter-contig proximity-ligation contacts were extracted from primary mapped Hi-C read pairs without applying a MAPQ cutoff. The final all-primary contig-contact network contained 3,770 contig nodes and 75,703 inter-contig Hi-C links. The resulting GEXF and GraphML files provide visualization-ready representations of contig-to-contig proximity ligation in the polished whole assembly.
 
 </details>
+
