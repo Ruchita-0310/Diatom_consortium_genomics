@@ -63,12 +63,6 @@ scripts/
 ├── 08_make_best_ORF_to_BRAKER_mapping_clean.py
 ├── 09_add_ONLY_Average_TPM_clean.py
 ├── 10_make_FINAL_clean_BRAKER_isoform_table.py
-├── 01_fastqc_hic_reads.slurm
-├── 02_map_hic_to_whole_assembly.slurm
-├── 03_yahs_whole_assembly.slurm
-├── 04_make_hic_contig_mapping_tables.sh
-├── 05_extract_intercontig_contacts.sh
-└── 06_summarize_yahs_agp.sh
 ```
 
 Script purposes:
@@ -101,23 +95,6 @@ merge_functional_annotation_layers.py
 10_make_FINAL_clean_BRAKER_isoform_table.py
   Creates the final clean BRAKER4 isoform-level table. It keeps one row per BRAKER4 protein isoform, adds compartment from contig ID, adds only yes/no *Phaeodactylum tricornutum* status, and removes all PT detail columns.
 
-01_fastqc_hic_reads.slurm
-  Runs FastQC and MultiQC on the paired-end Hi-C FASTQ files to check raw read quality before mapping.
-
-02_map_hic_to_whole_assembly.slurm
-  Maps Hi-C read pairs to the polished whole assembly with BWA-MEM and summarizes read-level and contig-level mapping with samtools.
-
-03_yahs_whole_assembly.slurm
-  Performs exploratory whole-assembly Hi-C scaffolding with YaHS and compares input and output assembly statistics.
-
-04_make_hic_contig_mapping_tables.sh
-  Converts `samtools idxstats` output into contig-level Hi-C presence/absence tables and summary counts.
-
-05_extract_intercontig_contacts.sh
-  Extracts MAPQ-filtered inter-contig Hi-C contacts from the BAM file and counts contact support for each contig pair.
-
-06_summarize_yahs_agp.sh
-  Summarizes the YaHS AGP file to check whether contigs were joined, split, or left as single-contig scaffolds.
 ```
 
 Deprecated all-hit TPM scripts and GBK organelle-merging scripts were not used in the final clean table. The accepted final output remains BRAKER4 isoform-based and does not collapse gene IDs or append GenBank-derived organelle rows.
