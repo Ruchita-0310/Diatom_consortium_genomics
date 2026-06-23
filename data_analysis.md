@@ -2037,7 +2037,6 @@ R1=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R1_001.fastq.g
 R2=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R2_001.fastq.gz
 HIC_DIR=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms
 ```
-Logic: these variables define the polished whole assembly, paired-end Hi-C reads, and the main Hi-C working directory.
 ### 18.2 Directory setup
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia
@@ -2047,13 +2046,11 @@ mkdir -p hi-c_diatoms/03_yahs_scaffolding
 mkdir -p hi-c_diatoms/04_contact_maps
 mkdir -p hi-c_diatoms/scripts
 ```
-Logic: this creates separate folders for read QC, mapping, exploratory scaffolding, contact-map outputs, and scripts.
 ### 18.3 Hi-C software environment
 ```bash
 conda create -n hic_diatom -c conda-forge -c bioconda bwa samtools seqkit fastqc multiqc yahs -y
 conda activate hic_diatom
 ```
-Logic: this creates and activates a dedicated environment containing the tools needed for Hi-C read QC, mapping, contig summaries, and exploratory scaffolding.
 ### 18.4 Raw Hi-C read quality control
 ```bash
 fastqc -t 8 \
@@ -2072,7 +2069,6 @@ The original assembly directory was not writable during indexing, so the assembl
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
 ```
 Logic: this moves into the mapping directory where all BWA index files, BAM files, and mapping summaries will be written.
-
 ```bash
 ASM_ORIG=/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta
 ASM_LOCAL=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly/pypolca_corrected.hic_input.fasta
@@ -2127,6 +2123,7 @@ Read records with mate mapped to a different contig at MAPQ >= 5: 95,093
 ```
 The `properly paired` value was 0.00%, but this was not interpreted as a failure because Hi-C read pairs are not expected to behave like normal short-insert paired-end reads.
 ### 18.7 Contig-level Hi-C mapping presence
+
 ```bash
 awk 'BEGIN {
     OFS="\t";
@@ -2138,9 +2135,7 @@ $1!="*" {
 }' hic_to_whole_assembly.idxstats.txt \
 > hic_contig_mapping_presence.tsv
 ```
-
 Logic: this converts `samtools idxstats` into a contig-level table indicating whether each contig has at least one mapped Hi-C read.
-
 ```bash
 awk '
 $1!="*" {
@@ -2165,7 +2160,6 @@ Contigs with >=1 Hi-C read mapped: 4,010
 Contigs with 0 Hi-C reads mapped: 915
 Percent contigs with Hi-C reads mapped: 81.42%
 ```
-
 ### 18.9 Save the Hi-C contig mapping summary
 ```bash
 {
@@ -2227,9 +2221,7 @@ BAM=/work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly/hic_
 
 yahs -o DL_diatom_whole_hic_yahs ${ASM} ${BAM}
 ```
-
 Logic: this uses the name-sorted Hi-C BAM to test whether YaHS can join contigs into larger Hi-C-supported scaffolds.
-
 ```bash
 seqkit stats \
     ${ASM} \
