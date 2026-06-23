@@ -85,4 +85,4 @@ Inter-contig Hi-C signal was detected, with 95,093 MAPQ >= 5 read records having
 ```
 Exploratory whole-assembly scaffolding with YaHS did not increase the maximum scaffold length and increased the number of output sequences from 4,925 to 5,032. The Hi-C result is therefore interpreted as contig-level representation and inter-contig contact evidence rather than as a final chromosome-scale scaffolded assembly.
 ## Detailed workflow
-The full command-by-command workflow is documented in [`data_analysis.md`](data_analysis.md). Each major step is stored in a collapsible section with commands, outputs, and interpretation notes. Hi-C commands are documented directly in Section 18 of `data_analysis.md`; no separate Hi-C SLURM files are included.
+The full command-by-command workflow is documented in [`data_analysis.md`](data_analysis.md). Each major step is stored in a collapsible section with commands, outputs, and interpretation notes. 
