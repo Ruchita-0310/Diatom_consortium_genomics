@@ -1,9 +1,6 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The analysis combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, and comparison with *Phaeodactylum tricornutum*.
-
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The analysis combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, comparison with *Phaeodactylum tricornutum*, and Hi-C read mapping to assess contig-level representation in the proximity-ligation dataset.
 ## Workflow overview
-
 ```text
 Nanopore reads
    ↓
@@ -32,6 +29,10 @@ Expression integration using TransDecoder ORFs and Average_TPM only
 Phaeodactylum tricornutum comparison summarized as yes/no only
    ↓
 Final clean BRAKER4 isoform-level gene table
+   ↓
+Hi-C read mapping to polished whole assembly
+   ↓
+Contig-level Hi-C representation summary
 ```
 ## Repository structure
 ```text
@@ -75,5 +76,13 @@ merge_functional_annotation_layers.py
 10_make_FINAL_clean_BRAKER_isoform_table.py
   Creates the final clean BRAKER4 isoform table with PT yes/no only.
 ```
+## Hi-C analysis summary
+```text
+Hi-C reads mapped to 4,010 of 4,925 assembly contigs.
+This corresponds to 81.42% of contigs in the polished whole assembly.
+At the read level, 622,967 of 890,810 primary Hi-C reads mapped to the assembly, giving a primary mapping rate of 69.93%.
+Inter-contig Hi-C signal was detected, with 95,093 MAPQ >= 5 read records having mates mapped to different contigs.
+```
+Exploratory whole-assembly scaffolding with YaHS did not increase the maximum scaffold length and increased the number of output sequences from 4,925 to 5,032. The Hi-C result is therefore interpreted as contig-level representation and inter-contig contact evidence rather than as a final chromosome-scale scaffolded assembly.
 ## Detailed workflow
-The full command-by-command workflow is documented in [`data_analysis.md`](data_analysis.md). Each major step is stored in a collapsible section with commands, outputs, and interpretation notes.
+The full command-by-command workflow is documented in [`data_analysis.md`](data_analysis.md). Each major step is stored in a collapsible section with commands, outputs, and interpretation notes. Hi-C commands are documented directly in Section 18 of `data_analysis.md`; no separate Hi-C SLURM files are included.
