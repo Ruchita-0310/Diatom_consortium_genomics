@@ -83,24 +83,34 @@ Script purposes:
 ```text
 01_classify_metaeuk_contigs.py
   Classifies contigs using MetaEuk ORF-level taxonomy and assigns each contig to a final category.
+
 02_make_swissprot_best_hits.py
   Parses Swiss-Prot DIAMOND output, calculates coverage, assigns confidence classes, and writes best-hit annotation tables.
+
 03_make_bacillariophyta_best_hits.py
   Parses UniProtKB Bacillariophyta DIAMOND output using the same confidence framework as the Swiss-Prot parser.
+
 04_summarize_interproscan.py
   Collapses raw InterProScan TSV output to one row per predicted protein and summarizes domains, GO terms, pathways, and database sources.
+
 05_merge_functional_annotation_layers.py
   Merges Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence into one BRAKER4 functional annotation table.
+
 06_merge_phaeodactylum_blast_hits.py
   Adds overlapping Phaeodactylum gene information to the cleaned BLASTN best-hit table.
+
 07_add_BRAKER_lengths_clean.py
   Adds BRAKER4 coordinates, contig IDs, strand, gene length, CDS length, and protein length to each isoform.
+
 08_make_best_ORF_to_BRAKER_mapping_clean.py
   Parses TransDecoder ORF versus BRAKER4 DIAMOND output and keeps one best BRAKER4 hit per TransDecoder ORF.
+
 09_add_ONLY_Average_TPM_clean.py
   Adds the matching TransDecoder ORF ID and Average_TPM value to BRAKER4 isoforms using the best ORF-to-BRAKER mapping.
+
 10_make_FINAL_clean_BRAKER_isoform_table.py
   Creates the final clean BRAKER4 isoform-level table with one row per protein isoform.
+
 11_make_hic_network_files.py
   Converts the Hi-C contig-contact table into GEXF and GraphML network files.
 ```
