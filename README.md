@@ -3,8 +3,6 @@ This repository documents the analysis workflow used to assemble, polish, classi
 
 The workflow includes long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, BRAKER4 ET gene prediction, functional annotation, expression integration, comparison with *Phaeodactylum tricornutum*, and Hi-C read mapping/contact-network analysis.
 
-The complete command-by-command workflow is provided in [`data_analysis.md`](data_analysis.md).
-
 ---
 
 ## Workflow overview
