@@ -97,7 +97,7 @@ Script purposes:
   Merges Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence into one BRAKER4 functional annotation table.
 
 06_merge_phaeodactylum_blast_hits.py
-  Adds overlapping Phaeodactylum gene information to the cleaned BLASTN best-hit table.
+  Adds overlapping Phaeodactylum gene information to the cleaned BLASTN comparison table.
 
 07_add_BRAKER_lengths_clean.py
   Adds BRAKER4 coordinates, contig IDs, strand, gene length, CDS length, and protein length to each isoform.
@@ -105,13 +105,16 @@ Script purposes:
 08_make_best_ORF_to_BRAKER_mapping_clean.py
   Parses TransDecoder ORF versus BRAKER4 DIAMOND output and keeps one best BRAKER4 hit per TransDecoder ORF.
 
-09_add_ONLY_Average_TPM_clean.py
+09_add_Average_TPM_to_BRAKER_isoforms.py
   Adds the matching TransDecoder ORF ID and Average_TPM value to BRAKER4 isoforms using the best ORF-to-BRAKER mapping.
 
-10_make_FINAL_clean_BRAKER_isoform_table.py
-  Creates the final clean BRAKER4 isoform-level table with one row per protein isoform.
+10_make_clean_BRAKER_isoform_table.py
+  Creates the final clean BRAKER4 isoform-level table with one row per predicted protein isoform.
 
-11_make_hic_network_files.py
+11_make_boss_review_gene_table_PTredo.py
+  Creates the simplified seven-column review table with gene ID, contig ID, compartment, gene length, functional annotation, Average_TPM, and redo Phaeodactylum yes/no status.
+
+12_make_hic_network_files.py
   Converts the Hi-C contig-contact table into GEXF and GraphML network files.
 ```
 ---
@@ -1778,204 +1781,119 @@ This analysis provides a gene-linked nucleotide similarity table between the dia
 ---
 
 <details>
-<summary><strong>17. Clean BRAKER4 isoform-level gene table construction</strong> - TransDecoder, DIAMOND, Average_TPM, and Phaeodactylum yes/no</summary>
+<summary><strong>17. Clean BRAKER4 isoform-level gene table construction</strong> - functional annotation, Average_TPM, and Phaeodactylum yes/no</summary>
 
-This section describes the final clean table construction used after rebuilding the annotation workflow from raw input files. The final output is a BRAKER4 isoform-level table with one row per predicted protein isoform.
+This section describes the final clean BRAKER4 isoform-level gene table used for pathway curation and manual review. The table keeps one row per predicted BRAKER4 protein isoform and combines functional annotation, BRAKER4 gene coordinates, compartment labels, transcriptome expression, and a simplified *Phaeodactylum tricornutum* yes/no comparison.
 
-The final table does not collapse BRAKER4 IDs, does not append GenBank-derived organelle rows, does not use all-hit TPM summaries, and does not retain detailed *Phaeodactylum tricornutum* hit columns.
-The final table keeps:
-```text
-gene_id
-transdecoder_orf_id
-compartment
-gene_length_bp
-recommended_annotation
-recommended_annotation_source
-recommended_annotation_confidence
-Average_TPM
-in_Phaeodactylum_tricornutum
-Swiss-Prot evidence
-Bacillariophyta evidence
-InterProScan evidence
-GO terms
-pathway annotations
-AntiFam flags
-BRAKER4 coordinates and length fields
-```
+The final table does not collapse BRAKER4 isoform IDs, does not append GenBank-derived organelle rows, does not use all-hit TPM summaries, and does not retain detailed *P. tricornutum* BLASTN hit columns. Detailed intermediate files were retained separately, while the final review table was kept intentionally compact.
+
 ### 17.1 Clean rebuild directory
-
-```bash
-mkdir -p /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
-cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
-
-mkdir -p 01_input 02_diamond 03_best_hits 05_interproscan 06_combined_annotation 07_expression 08_phaeodactylum 09_final scripts logs slurm
+The clean rebuild was performed in:
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
 ```
-This clean rebuild directory was used to avoid carrying forward columns from older all-hit and GenBank-merging workflows.
+The working directory contained separate folders for input files, DIAMOND outputs, best-hit annotation tables, InterProScan results, combined annotation files, expression integration, *Phaeodactylum* comparison files, final tables, scripts, logs, and SLURM files.
 
+This clean rebuild directory was used to avoid carrying forward columns from older all-hit TPM summaries, older *Phaeodactylum* comparison outputs, and GenBank-based organelle-merging workflows.
 ### 17.2 Input files
-The rebuild used the accepted BRAKER4 ET proteins and GFF3 file:
+The clean rebuild used the accepted BRAKER4 ET protein and annotation files:
 ```text
 01_input/diatom_predicted_proteins.fa
 01_input/DL_diatom.braker4.ET.proteins.faa
 01_input/DL_diatom.braker4.ET.gff3
 ```
-The functional annotation layers were rebuilt from raw or core annotation files:
+The functional annotation layers were rebuilt from the raw or core annotation files:
 ```text
 02_diamond/DL_diatom_braker4_ET_vs_swissprot.tsv
 02_diamond/DL_diatom_braker4_ET_vs_uniprot_bacillariophyta.tsv
 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
 06_combined_annotation/DL_diatom_antifam_flagged_proteins.tsv
 ```
-The expression integration used cleaned TransDecoder peptides and the trusted transcriptome expression table:
+Expression integration used the cleaned TransDecoder peptide file and the trusted transcriptome expression table:
 ```text
 01_input/transcriptome_orfs.transdecoder.clean.pep
 07_expression/master_with_custom_broad_categories.csv
 ```
-The *Phaeodactylum tricornutum* comparison used only the raw gene-overlap file for yes/no lookup:
+The *Phaeodactylum tricornutum* yes/no column was rebuilt using the redo pairwise BLASTN gene-overlap summary:
 ```text
-08_phaeodactylum/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv
+phaeodactylum_to_diatom_blastn_redo/04_summary/phaeodactylum_vs_diatom_BLASTN_with_PT_and_BRAKER_ET_genes.tsv
 ```
-The file `blast_hit_to_phaeodactylum_gene.tsv` was not required for the final clean table because no PHATRDRAFT IDs, gene names, bitscores, percent identities, or e-values were retained.
+This redo BLASTN summary was used only as a yes/no lookup. PHATRDRAFT IDs, *P. tricornutum* gene names, percent identity, alignment length, bitscore, and e-value columns were not retained in the final clean table.
+### 17.3 Functional annotation layers
+Functional annotations were integrated from Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, and AntiFam evidence.
 
-### 17.3 Rebuild functional annotation layers
-```bash
-python scripts/02_make_swissprot_best_hits.py 2>&1 | tee swissprot_rebuild.log
-```
-This script rebuilds the Swiss-Prot best-hit and all-protein annotation tables from the raw DIAMOND output.
-```bash
-python scripts/03_make_bacillariophyta_best_hits.py 2>&1 | tee bacillariophyta_rebuild.log
-```
-This script rebuilds the Bacillariophyta best-hit and all-protein annotation tables from the raw DIAMOND output.
-```bash
-python scripts/04_summarize_interproscan.py 2>&1 | tee interproscan_rebuild.log
-```
-This script summarizes the raw InterProScan TSV output to one row per predicted protein.
+Swiss-Prot provided the conservative manually reviewed annotation layer. UniProtKB Bacillariophyta provided a diatom-focused homology layer. InterProScan contributed conserved domains, protein families, GO terms, and pathway annotations. AntiFam matches were retained as warning flags rather than functional annotations.
 
-Each all-protein annotation file was checked to confirm one row per BRAKER4 protein isoform plus one header line:
-```bash
-wc -l 03_best_hits/DL_diatom_all_proteins_with_swissprot_annotation.tsv
-wc -l 03_best_hits/DL_diatom_all_proteins_with_bacillariophyta_annotation.tsv
-wc -l 06_combined_annotation/DL_diatom_all_proteins_with_interproscan_summary.tsv
-```
-These commands verify that the annotation tables contain the expected 16,947 protein rows plus one header.
-Expected output:
+Each all-protein annotation table was checked to confirm one row per BRAKER4 protein isoform plus one header line. The expected line count for each all-protein table was:
 ```text
-16948
-16948
-16948
+16,947 BRAKER4 protein isoforms + 1 header = 16,948 lines
 ```
-The two AntiFam flags were retained as warning flags:
+The two AntiFam-flagged proteins were retained in the master annotation table:
 ```text
 g10893.t1    ANF00012    tRNA
 g11404.t1    ANF00005    Antisense to 23S rRNA
 ```
-```bash
-python scripts/05_merge_functional_annotation_layers.py 2>&1 | tee merge_functional_annotation_rebuild.log
-```
-This script merges Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence into the rebuilt master functional annotation table.
-Output:
+The merged master functional annotation table was:
 ```text
 06_combined_annotation/DL_diatom_master_functional_annotation.tsv
-06_combined_annotation/DL_diatom_master_functional_annotation_for_manual_categories.tsv
-06_combined_annotation/DL_diatom_master_functional_annotation_summary.txt
 ```
 The master annotation table contained:
 ```text
-16,947 BRAKER4 predicted proteins + 1 header line = 16,948 lines
+16,947 BRAKER4 predicted protein isoforms
+16,948 lines including the header
 ```
-### 17.4 Add BRAKER4 gene, CDS, and protein lengths
-```bash
-python scripts/07_add_BRAKER_lengths_clean.py 2>&1 | tee add_lengths_rebuild.log
-```
-This script adds contig ID, gene coordinates, strand, gene length, CDS length, and protein length from the BRAKER4 GFF3 file.
-Output:
+### 17.4 BRAKER4 gene, CDS, and protein lengths
+BRAKER4 GFF3 coordinates were added to the master annotation table. This step added the contig ID, gene start, gene end, strand, gene length, CDS length, and protein length for each BRAKER4 isoform.
+
+The length-augmented output file was:
 ```text
 07_expression/DL_diatom_master_functional_annotation_with_lengths.tsv
 ```
-Observed counts:
+Observed counts were:
 ```text
 Input annotation rows:       16,947
 GFF3 transcript rows parsed: 16,947
 Rows with gene length:       16,947
 Rows missing gene length:         0
 ```
-### 17.5 Align TransDecoder ORFs to BRAKER4 proteins
-```bash
-set -euo pipefail
+### 17.5 TransDecoder ORF to BRAKER4 protein mapping
+TransDecoder-predicted ORFs from the metatranscriptome were aligned to the accepted BRAKER4 ET protein set using DIAMOND BLASTP. The BRAKER4 protein set was first used to build a DIAMOND database, and TransDecoder peptides were then searched against that database.
 
-source ~/miniforge3/etc/profile.d/conda.sh
-conda activate swissprot_annot
-
-cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
-
-mkdir -p 07_expression logs
-```
-```bash
-diamond makedb \
-    --in 01_input/diatom_predicted_proteins.fa \
-    -d 07_expression/braker4_ET.proteins
-```
-This command builds a DIAMOND database from the accepted BRAKER4 ET protein set.
-```bash
-diamond blastp \
-    -q 01_input/transcriptome_orfs.transdecoder.clean.pep \
-    -d 07_expression/braker4_ET.proteins \
-    -o 07_expression/transcriptome_ORFs_vs_BRAKER4_ET_proteins.tsv \
-    --outfmt 6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore \
-    --max-target-seqs 10 \
-    --evalue 1e-5 \
-    --threads 16
-```
-This command aligns TransDecoder-predicted ORFs against the BRAKER4 protein set and retains up to 10 candidate hits per ORF.
-Raw DIAMOND output:
+The raw ORF-to-BRAKER4 DIAMOND output was:
 ```text
-118,472 hit rows
-39,935 unique TransDecoder ORFs with at least one BRAKER hit
-14,473 unique BRAKER proteins hit by at least one reported ORF hit
+07_expression/transcriptome_ORFs_vs_BRAKER4_ET_proteins.tsv
 ```
-### 17.6 Create one best ORF-to-BRAKER mapping per TransDecoder ORF
-```bash
-python scripts/08_make_best_ORF_to_BRAKER_mapping_clean.py 2>&1 | tee make_best_mapping_rebuild.log
-```
-This script calculates ORF and BRAKER protein coverage from the raw DIAMOND output and keeps one best BRAKER4 hit per TransDecoder ORF.
-Output files:
+Raw mapping summary:
 ```text
-07_expression/transdecoder_ORFs_vs_BRAKER4_all_hits_with_coverage.tsv
+118,472 DIAMOND hit rows
+39,935 unique TransDecoder ORFs with at least one BRAKER4 hit
+14,473 unique BRAKER4 proteins hit by at least one reported ORF hit
+```
+For expression integration, one best BRAKER4 hit was retained per TransDecoder ORF. Best-hit selection was based on alignment quality and coverage, so that each ORF contributed to only one BRAKER4 protein in the final expression-mapping table.
+The best ORF-to-BRAKER4 mapping file was:
+```text
 07_expression/transdecoder_ORFs_to_BRAKER4_best_hit_per_ORF.tsv
 ```
-Observed counts:
+Observed counts for the best-hit mapping were:
 ```text
 Raw DIAMOND hit rows: 118,472
-Unique TransDecoder ORFs with at least one BRAKER hit: 39,935
-Unique BRAKER proteins hit by best ORF mappings: 12,277
+Unique TransDecoder ORFs with at least one BRAKER4 hit: 39,935
+Unique BRAKER4 proteins hit by best ORF mappings: 12,277
+Best-hit file: 39,935 ORF mappings + 1 header = 39,936 lines
 ```
-The best-hit file contained:
-```text
-39,935 ORF mappings + 1 header line = 39,936 lines
-```
-### 17.7 Add TransDecoder ORF ID and Average_TPM only
-The trusted transcriptome table was copied into the clean rebuild folder:
-```bash
-cp ../master_with_custom_broad_categories.csv 07_expression/
-```
-This command copies the trusted transcriptome expression table into the clean rebuild directory.
-
-Only two columns were used from this file:
+### 17.6 Average_TPM integration
+Expression values were transferred from the trusted transcriptome table to BRAKER4 isoforms using the best TransDecoder ORF-to-BRAKER4 mapping.
+Only two columns were used from the transcriptome expression table:
 ```text
 orf
 Average_TPM
 ```
-```bash
-python scripts/09_add_ONLY_Average_TPM_clean.py 2>&1 | tee add_average_tpm_rebuild.log
-```
-This script adds `transdecoder_orf_id` and `Average_TPM` to BRAKER4 isoforms using the best ORF-to-BRAKER mapping.
-
-If multiple TransDecoder ORFs mapped best to the same BRAKER4 protein, the ORF with the highest valid `Average_TPM` was retained. ORFs without valid numeric `Average_TPM` were excluded from the expression-supported ORF column.
-Output:
+If multiple TransDecoder ORFs mapped best to the same BRAKER4 protein isoform, the ORF with the highest valid `Average_TPM` was retained. ORFs without valid numeric `Average_TPM` values were not used to populate the expression-supported ORF column.
+The expression-integrated output file was:
 ```text
 07_expression/DL_diatom_master_functional_annotation_lengths_Average_TPM.tsv
 ```
-Final expression integration counts:
+Final expression integration counts were:
 ```text
 Annotation rows: 16,947
 Best ORF-to-BRAKER rows: 39,935
@@ -1990,95 +1908,113 @@ transdecoder_orf_id
 Average_TPM
 ```
 No all-hit TPM sums, means, hit counts, or mapped ORF lists were retained.
-### 17.8 Add *Phaeodactylum tricornutum* yes/no only
-The raw *Phaeodactylum tricornutum* comparison file contains detailed BLASTN overlap fields, but the final clean table used it only as a yes/no lookup.
+
+### 17.7 Phaeodactylum tricornutum yes/no lookup
+The final *Phaeodactylum tricornutum* column was rebuilt from the redo pairwise BLASTN gene-overlap summary:
 ```text
-08_phaeodactylum/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv
+phaeodactylum_to_diatom_blastn_redo/04_summary/phaeodactylum_vs_diatom_BLASTN_with_PT_and_BRAKER_ET_genes.tsv
 ```
-The file contains gene roots such as:
+The raw pairwise BLASTN comparison identified nucleotide alignments between the *P. tricornutum* reference genome and the diatom genome. The redo summary linked BLASTN alignments to annotated genes on both sides by identifying alignments that overlapped annotated *P. tricornutum* genes and BRAKER4 ET gene models in the diatom genome.
+
+The final table used this file only as a yes/no lookup. A diatom gene was marked `yes` only when a BLASTN alignment overlapped both:
 ```text
-g8700
-g8702
-g14082
+a BRAKER4 ET gene model in the diatom genome
+an annotated Phaeodactylum tricornutum gene
 ```
-The final BRAKER4 table keeps isoform IDs such as:
+The redo BLASTN table stores diatom genes as gene roots, such as:
+
 ```text
-g8700.t1
-g8702.t1
+g10009
+g10013
+g10036
 ```
-Therefore, the script used the root only for lookup while preserving the full BRAKER4 isoform ID in the final table. The only *Phaeodactylum*-derived output column is:
+The final BRAKER4 annotation table stores isoform IDs, such as:
 ```text
-in_Phaeodactylum_tricornutum
+g10009.t1
+g10013.t1
+g10036.t1
 ```
-Detailed columns such as `blast_hit_id`, `pt_gene_id`, `pt_gene_name`, `bitscore`, `pident`, and `evalue` were not retained.
-### 17.9 Create final clean BRAKER4 isoform-level table
-```bash
-python scripts/10_make_FINAL_clean_BRAKER_isoform_table.py 2>&1 | tee make_final_clean_table.log
+Therefore, the lookup was performed using the gene root while preserving the full BRAKER4 isoform ID in the final table. For example, `g10009.t1` was matched to the redo BLASTN gene root `g10009`.
+The only *Phaeodactylum*-derived column retained in the final table was:
+```text
+present_in_Phaeodactylum_tricornutum
 ```
-This script creates the final clean BRAKER4 isoform-level table by combining functional annotation, BRAKER4 lengths, expression, compartment labels, and *Phaeodactylum* yes/no status.
-Output files:
+Detailed BLASTN columns such as `blast_hit_id`, `pt_gene_id`, `pt_gene_name`, `bitscore`, `pident`, `aln_len`, and `evalue` were not retained.
+This yes/no column should be interpreted as a nucleotide-level gene-linked similarity screen. It does not represent confirmed orthology, reciprocal best hits, or protein-level conservation.
+### 17.8 Final clean BRAKER4 isoform-level table
+The clean BRAKER4 isoform-level table was created by combining functional annotation, BRAKER4 length fields, compartment labels, expression values, and the redo *P. tricornutum* yes/no lookup.
+The main clean annotation table was:
 ```text
 09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
+```
+The expression-sorted version was:
+```text
 09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_sorted_by_Average_TPM.tsv
 ```
-Both final files contained:
+Both files contained:
 ```text
-16,947 BRAKER4 isoform rows + 1 header line = 16,948 lines
+16,947 BRAKER4 isoform rows + 1 header = 16,948 lines
 ```
-Final compartment counts:
+Final compartment counts were:
 ```text
 nuclear        16,873
 plastid_like       72
 mito_like           2
 ```
-The compartment labels were assigned from BRAKER4 contig IDs only. No GenBank organelle rows were appended.
-Final *Phaeodactylum tricornutum* yes/no counts:
+The compartment labels were assigned from BRAKER4 contig IDs only. No GenBank-derived organelle rows were appended.
+The final redo *Phaeodactylum tricornutum* yes/no counts were:
 ```text
-no     15,225
-yes     1,722
+no     13,240
+yes     3,707
 ```
-The script also confirmed:
+### 17.9 Simplified gene table for manual review
+A simplified review table was also created for manual inspection and discussion. This table keeps only the key columns needed for pathway-level review and interpretation.
+The simplified review table was:
 ```text
-PT detail columns found: []
+09_final/DL_diatom_FINAL_gene_table_for_boss_PTredo.tsv
 ```
-### 17.10 Final table structure
-The final clean table begins with:
+The table contains seven columns:
 ```text
 gene_id
-transdecoder_orf_id
-compartment
-gene_length_bp
-recommended_annotation
-recommended_annotation_source
-recommended_annotation_confidence
-Average_TPM
-in_Phaeodactylum_tricornutum
+contig_id
+diatom_compartment
+diatom_gene_length_bp
+functional_annotation
+diatom_Average_TPM
+present_in_Phaeodactylum_tricornutum
 ```
-`gene_id` is the original BRAKER4 protein isoform ID and is not collapsed to the gene root. `transdecoder_orf_id` is the TransDecoder ORF that contributed the expression value for that BRAKER4 isoform.
-
-The `transdecoder_orf_id` column is populated only when the mapped ORF has a valid numeric `Average_TPM`. If a TransDecoder ORF maps to a BRAKER4 protein but does not have a usable `Average_TPM`, both `transdecoder_orf_id` and `Average_TPM` are left blank in the final output.
-
-If multiple TransDecoder ORFs map best to the same BRAKER4 isoform, the ORF with the highest valid `Average_TPM` is retained. TPM values are not summed, averaged, or duplicated across all DIAMOND hits.
-The final table therefore reports:
+The simplified table contained:
 ```text
-one BRAKER4 isoform row
-one representative TransDecoder ORF ID when expression support is available
-one Average_TPM value
-one Phaeodactylum tricornutum yes/no value
+16,947 BRAKER4 isoform rows
+7 columns
 ```
-### 17.11 Final output files
-The main final table is:
+Column descriptions:
 ```text
-09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
-```
-The expression-sorted version is:
-```text
-09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_sorted_by_Average_TPM.tsv
-```
+gene_id
+  Original BRAKER4 isoform ID. This ID was preserved and was not collapsed to the gene root.
 
-The sorted file is useful for manual inspection and pathway curation because highly expressed genes appear first. The unsorted file should be retained as the master output.
+contig_id
+  Diatom contig containing the BRAKER4 gene model.
+
+diatom_compartment
+  Compartment assignment based on the contig ID: nuclear, plastid_like, or mito_like.
+
+diatom_gene_length_bp
+  Gene length in base pairs, calculated from BRAKER4 GFF3 coordinates.
+
+functional_annotation
+  Recommended annotation from the integrated Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence layers.
+
+diatom_Average_TPM
+  Transcriptome expression value transferred from the best TransDecoder ORF-to-BRAKER4 mapping.
+
+present_in_Phaeodactylum_tricornutum
+  Yes/no value based on whether the diatom BRAKER4 gene root had nucleotide-level gene-linked similarity to an annotated Phaeodactylum tricornutum gene in the redo BLASTN comparison.
+```
+The simplified table is intended for manual review, pathway curation, and discussion because it keeps the key biological interpretation fields without carrying forward detailed intermediate annotation or BLASTN columns.
 
 </details>
+
 
 ---
 
