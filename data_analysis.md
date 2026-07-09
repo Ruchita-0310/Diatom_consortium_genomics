@@ -1473,346 +1473,305 @@ braker.18_diatom_nuclear_only.v1.gff3
 ---
 
 <details>
-<summary><strong>16. Pairwise genome comparison with <em>Phaeodactylum tricornutum</em></strong> - BLASTN and bedtools</summary>
+<summary><strong>16. Pairwise genome comparison with <em>Phaeodactylum tricornutum</em></strong> - BLASTN, GFF3, and bedtools</summary>
 
-A pairwise genome comparison was performed between the updated nuclear-enriched diatom genome and the reference genome of *Phaeodactylum tricornutum*. This analysis was used as a nucleotide-level similarity screen and was not intended to define complete gene orthology.
-### 16.1 Input files and working directory
+A pairwise genome comparison was performed between the BRAKER4-annotated diatom genome and the reference genome of *Phaeodactylum tricornutum*. This analysis was used as a nucleotide-level similarity screen and was not treated as a full orthology analysis. Raw BLASTN hits were retained without filtering and then linked to overlapping gene models in both genomes.
+### 16.1 Working directory and input files
 ```bash
-MY_GENOME=/work/ebg_lab/eb/diatom_consortia/nuclear_genome_filtering_18_diatom/18_diatom_nuclear_enriched.v1.fasta
-MY_GFF=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.gff3
+cd /work/ebg_lab/eb/diatom_consortia
 
-mkdir -p /work/ebg_lab/eb/diatom_consortia/phaeodactylum_blast_18_diatom_v1
-cd /work/ebg_lab/eb/diatom_consortia/phaeodactylum_blast_18_diatom_v1
-mkdir -p blast_out blast_db phaeodactylum
+mkdir -p phaeodactylum_to_diatom_blastn_redo/{00_inputs,01_db,02_blast,03_filtered,04_summary,logs,scripts}
+
+cd phaeodactylum_to_diatom_blastn_redo
 ```
-These variables define the nuclear-enriched diatom genome and the original BRAKER4 annotation file used for comparison.
-### 16.2 Filter BRAKER4 GFF3 to nuclear contigs
+The diatom genome used for this comparison was:
 ```bash
-seqkit seq -n $MY_GENOME > nuclear_contigs.v1.txt
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta
 ```
-This command extracts the contig names retained in the nuclear-enriched genome.
+The accepted BRAKER4 ET annotation file was:
 ```bash
-awk 'BEGIN{FS=OFS="\t"}
-FNR==NR {keep[$1]=1; next}
-$0 ~ /^#/ {
-    if ($0 !~ /^##FASTA/) print;
-    next
-}
-$1 in keep {print}' nuclear_contigs.v1.txt $MY_GFF \
-    > braker.18_diatom_nuclear_only.v1.gff3
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.gff3
 ```
-This command filters the BRAKER4 GFF3 file to keep only features on nuclear-enriched contigs.
+The diatom genome was linked into the input directory:
 ```bash
-grep -c $'\tgene\t' $MY_GFF
-grep -c $'\tgene\t' braker.18_diatom_nuclear_only.v1.gff3
+ln -sf /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta \
+    00_inputs/diatom_genome.fasta
 ```
-These commands count gene features before and after nuclear-contig filtering.
+### 16.2 Download the *Phaeodactylum tricornutum* reference genome and GFF3
+The *P. tricornutum* reference genome and annotation were downloaded from the NCBI RefSeq assembly `GCF_000150955.2_ASM15095v2`.
+```bash
+wget -O 00_inputs/Phaeodactylum_tricornutum_ASM15095v2_GCF_000150955.2_genomic.fna.gz \
+https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/150/955/GCF_000150955.2_ASM15095v2/GCF_000150955.2_ASM15095v2_genomic.fna.gz
+```
+This command downloads the *P. tricornutum* genome FASTA file.
+
+```bash
+gunzip -c 00_inputs/Phaeodactylum_tricornutum_ASM15095v2_GCF_000150955.2_genomic.fna.gz \
+    > 00_inputs/phaeodactylum_genome.fna
+```
+This command creates an uncompressed FASTA file while keeping the original compressed file.
+```bash
+wget -O 00_inputs/phaeodactylum_ASM15095v2.gff3.gz \
+https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/150/955/GCF_000150955.2_ASM15095v2/GCF_000150955.2_ASM15095v2_genomic.gff.gz
+```
+This command downloads the matching *P. tricornutum* GFF3 annotation file.
+```bash
+gunzip -c 00_inputs/phaeodactylum_ASM15095v2.gff3.gz \
+    > 00_inputs/phaeodactylum_ASM15095v2.gff3
+```
+This command creates an uncompressed GFF3 annotation file.
+### 16.3 Check genome FASTA files
+```bash
+seqkit stats 00_inputs/diatom_genome.fasta 00_inputs/phaeodactylum_genome.fna
+```
+This command checks the number of sequences and total genome length for both FASTA files.
+Output:
 ```text
-Full BRAKER4 genes:              15102
-Nuclear-filtered BRAKER4 genes:  15048
+file                                format  type  num_seqs     sum_len  min_len   avg_len    max_len
+00_inputs/diatom_genome.fasta       FASTA   DNA      3,010  82,172,226      498  27,299.7    278,139
+00_inputs/phaeodactylum_genome.fna  FASTA   DNA         88  27,450,724      450   311,940  2,535,400
 ```
-Thus, 54 gene models located on removed organelle-like contigs were excluded from the nuclear gene set.
-### 16.3 Convert nuclear gene models to BED
-```bash
-MY_NUCLEAR_GFF=braker.18_diatom_nuclear_only.v1.gff3
-
-awk -F'\t' 'BEGIN{OFS="\t"}
-!/^#/ && $3=="gene" {
-  id=$9;
-  sub(/.*ID=/,"",id);
-  sub(/;.*/,"",id);
-  print $1,$4-1,$5,id,$6,$7
-}' $MY_NUCLEAR_GFF \
-    > blast_out/18_diatom_nuclear_v1_genes.bed
-```
-This command converts nuclear-filtered BRAKER4 gene coordinates from GFF3 to BED format for downstream overlap analysis.
-```bash
-wc -l blast_out/18_diatom_nuclear_v1_genes.bed
-```
-This command counts the number of nuclear gene models in the BED file.
-The resulting BED file contained 15,048 nuclear gene models.
-### 16.4 Download the *Phaeodactylum tricornutum* reference genome
-```bash
-datasets download genome accession GCF_000150955.2 \
-    --include genome,gff3 \
-    --filename phaeodactylum/Phaeodactylum_tricornutum_GCF_000150955.2.zip
-```
-This command downloads the *P. tricornutum* reference genome and annotation from NCBI.
-
-```bash
-unzip phaeodactylum/Phaeodactylum_tricornutum_GCF_000150955.2.zip -d phaeodactylum
-```
-This command extracts the downloaded reference genome package.
-```bash
-PT_GENOME=$(find phaeodactylum -name "*genomic.fna" | head -n 1)
-PT_GFF=$(find phaeodactylum -name "*.gff" -o -name "*.gff3" | head -n 1)
-
-echo $PT_GENOME
-echo $PT_GFF
-```
-These commands locate the downloaded *Phaeodactylum* genome FASTA and GFF annotation files.
-### 16.5 Build the BLAST database
+### 16.4 Build the diatom BLAST database
 ```bash
 makeblastdb \
-    -in $PT_GENOME \
+    -in 00_inputs/diatom_genome.fasta \
     -dbtype nucl \
     -parse_seqids \
-    -out blast_db/Phaeodactylum_tricornutum
-
-PT_DB=blast_db/Phaeodactylum_tricornutum
+    -out 01_db/diatom_genome_blastdb \
+    -title "DL_diatom_genome"
 ```
-This command builds a nucleotide BLAST database from the *P. tricornutum* reference genome.
-### 16.6 Run genome-vs-genome BLASTN
+This command builds a nucleotide BLAST database from the diatom genome.
+Output:
+```text
+Adding sequences from FASTA; added 3010 sequences
+```
+### 16.5 Run *Phaeodactylum* versus diatom BLASTN
+
 ```bash
 blastn \
-    -query $MY_GENOME \
-    -db $PT_DB \
-    -task blastn \
+    -task dc-megablast \
+    -query 00_inputs/phaeodactylum_genome.fna \
+    -db 01_db/diatom_genome_blastdb \
+    -out 02_blast/phaeodactylum_vs_diatom_dcmegablast.tsv \
     -evalue 1e-10 \
-    -num_threads 32 \
-    -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen qcovs" \
-    -out blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.blastn.tsv
+    -perc_identity 60 \
+    -num_threads 16 \
+    -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen qcovs"
 ```
-This command compares the nuclear-enriched diatom genome against the *P. tricornutum* reference genome at the nucleotide level.
+This command uses the *P. tricornutum* genome as the query and the diatom genome as the BLAST database. The raw BLASTN output was retained without additional filtering.
 ```bash
-wc -l blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.blastn.tsv
+wc -l 02_blast/phaeodactylum_vs_diatom_dcmegablast.tsv
 ```
-This command counts the number of raw BLASTN alignments.
-The raw BLASTN output contained:
-```text
-34,991 alignments
-```
-### 16.7 Filter BLASTN alignments
-Alignments were filtered using:
-```text
-Percent identity:  ≥70%
-Alignment length:  ≥200 bp
-E-value:           ≤1e-10
-```
-```bash
-awk 'BEGIN{OFS="\t"} $3 >= 70 && $4 >= 200 && $11 <= 1e-10' \
-    blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.blastn.tsv \
-    > blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv
-```
-This command keeps stronger BLASTN alignments and removes weak or very short matches before gene-overlap analysis.
-```bash
-wc -l blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv
-```This command counts the number of BLASTN alignments that passed the filtering thresholds.
-
-This produced:
-```text
-4,895 filtered BLASTN alignments
-```
-### 16.8 Identify diatom genes overlapping *Phaeodactylum*-like regions
-```bash
-awk 'BEGIN{OFS="\t"} {
-  qs=($7<$8?$7:$8)-1;
-  qe=($7>$8?$7:$8);
-  strand=($9<=$10?"+":"-");
-  hit="hit_"NR;
-  print $1, qs, qe, hit, $12, strand, $2, $9, $10, $3, $4, $11
-}' blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv \
-    > blast_out/blast_hits_on_18_diatom_nuclear_v1.bed
-```
-This command converts filtered BLASTN hits into BED-like coordinates on the nuclear-enriched diatom genome.
-```bash
-bedtools intersect \
-    -a blast_out/18_diatom_nuclear_v1_genes.bed \
-    -b blast_out/blast_hits_on_18_diatom_nuclear_v1.bed \
-    -wa -wb \
-    > blast_out/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv
-```
-This command identifies nuclear diatom genes that overlap filtered *Phaeodactylum*-like BLASTN regions.
-
-This produced:
-```text
-2,269 gene-alignment overlaps
-1,492 unique diatom genes with P. tricornutum-like BLASTN hits
-```
-```bash
-cut -f4 blast_out/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv \
-    | sort -u \
-    | wc -l
-```
-This command counts the number of unique diatom gene IDs overlapping filtered BLASTN hits.
-```bash
-TOTAL_GENES=$(wc -l < blast_out/18_diatom_nuclear_v1_genes.bed)
-
-HIT_GENES=$(cut -f4 blast_out/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv \
-    | sort -u \
-    | wc -l)
-
-awk -v h=$HIT_GENES -v t=$TOTAL_GENES 'BEGIN{
-  print "Total nuclear genes:", t
-  print "Genes with Phaeodactylum-like BLAST hits:", h
-  print "Percent:", (h/t)*100 "%"
-}'
-```
-These commands calculate the proportion of nuclear-filtered diatom genes with detectable nucleotide similarity to *P. tricornutum*.
-
 Output:
 ```text
-Total nuclear genes: 15048
-Genes with Phaeodactylum-like BLAST hits: 1492
-Percent: 9.91494%
+28,934 raw BLASTN hits
 ```
-### 16.9 Select the best BLASTN hit per diatom gene
+A headered version of the BLASTN output was also created:
 ```bash
-sort -k4,4 -k11,11nr blast_out/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv \
-    | awk 'BEGIN{OFS="\t"} !seen[$4]++' \
-    > blast_out/18_diatom_nuclear_v1_genes_best_phaeodactylum_hit.tsv
+printf "pt_contig\tdiatom_contig\tpident\taln_len\tmismatch\tgapopen\tpt_start\tpt_end\tdiatom_start\tdiatom_end\tevalue\tbitscore\tpt_len\tdiatom_len\tqcovs\n" \
+> 02_blast/phaeodactylum_vs_diatom_dcmegablast.header.tsv
+
+cat 02_blast/phaeodactylum_vs_diatom_dcmegablast.tsv \
+>> 02_blast/phaeodactylum_vs_diatom_dcmegablast.header.tsv
 ```
-This command sorts gene-overlap records by diatom gene ID and bitscore, then keeps the top-scoring BLASTN hit per gene.
+This command adds readable column names to the raw BLASTN output.
+### 16.6 Convert *Phaeodactylum* genes to BED
 ```bash
-awk 'BEGIN{FS=OFS="\t"}
-{
-  pident_sum += $16;
-  aln_len_sum += $17;
-  n += 1
-}
-END{
-  print "Number of best-hit genes:", n
-  print "Mean percent identity:", pident_sum/n
-  print "Mean alignment length:", aln_len_sum/n
-}' blast_out/18_diatom_nuclear_v1_genes_best_phaeodactylum_hit.tsv
+awk -F'\t' '
+BEGIN{OFS="\t"}
+$3=="gene"{
+  id=name=gene=locus="NA"
+  n=split($9,a,";")
+  for(i=1;i<=n;i++){
+    split(a[i],b,"=")
+    if(b[1]=="ID") id=b[2]
+    else if(b[1]=="Name") name=b[2]
+    else if(b[1]=="gene") gene=b[2]
+    else if(b[1]=="locus_tag") locus=b[2]
+  }
+  gsub(/^gene-/,"",id)
+  print $1, $4-1, $5, id, name, gene, locus, $7
+}' 00_inputs/phaeodactylum_ASM15095v2.gff3 \
+> 00_inputs/phaeodactylum_genes.bed
 ```
-This command calculates mean percent identity and mean alignment length across the best-hit gene set.
+This command converts *P. tricornutum* gene coordinates from GFF3 to BED format and extracts gene IDs, gene names, gene symbols, locus tags, and strand information.
+```bash
+wc -l 00_inputs/phaeodactylum_genes.bed
+```
 Output:
 ```text
-Number of best-hit genes: 1492
-Mean percent identity: 72.9402
-Mean alignment length: 596.025
+10,392 Phaeodactylum genes
 ```
-### 16.10 Create final interpreted BLAST table
+### 16.7 Convert diatom BRAKER4 ET genes to BED
 ```bash
-awk 'BEGIN{FS=OFS="\t";
-print "diatom_contig","diatom_gene_start","diatom_gene_end","diatom_gene_id","diatom_gene_strand","blast_hit_id","bitscore","blast_strand","pt_contig","pt_start","pt_end","pident","aln_len","evalue"
-}
-{
-print $1,$2,$3,$4,$6,$10,$11,$12,$13,$14,$15,$16,$17,$18
-}' blast_out/18_diatom_nuclear_v1_genes_best_phaeodactylum_hit.tsv \
-    > blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.clean.tsv
-```
-This command creates a cleaner best-hit table containing the main diatom gene coordinates and BLASTN hit metrics.
-### 16.11 Link BLAST regions to annotated *Phaeodactylum* genes
-```bash
-awk 'BEGIN{OFS="\t"} {
-  ss=($9<$10?$9:$10)-1;
-  se=($9>$10?$9:$10);
-  strand=($9<=$10?"+":"-");
-  hit="hit_"NR;
-  print $2, ss, se, hit, $12, strand, $1, $7, $8, $3, $4, $11
-}' blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv \
-    > blast_out/blast_hits_on_phaeodactylum.bed
-```
-This command converts filtered BLASTN alignments into BED-like coordinates on the *P. tricornutum* reference genome.
-```bash
-awk -F'\t' 'BEGIN{OFS="\t"}
-function get_attr(attr,key,   n,a,i,b) {
-  n=split(attr,a,";");
-  for(i=1;i<=n;i++) {
-    split(a[i],b,"=");
-    if(b[1]==key) return b[2];
+awk -F'\t' '
+BEGIN{OFS="\t"}
+$3=="gene"{
+  id=gene_id="NA"
+  n=split($9,a,";")
+  for(i=1;i<=n;i++){
+    split(a[i],b,"=")
+    if(b[1]=="ID") id=b[2]
+    else if(b[1]=="gene_id") gene_id=b[2]
   }
-  return "NA";
-}
-!/^#/ && $3=="gene" {
-  id=get_attr($9,"ID");
-  name=get_attr($9,"Name");
-  gene=get_attr($9,"gene");
-  locus=get_attr($9,"locus_tag");
-
-  if(name=="NA" && gene!="NA") name=gene;
-  if(name=="NA" && locus!="NA") name=locus;
-
-  print $1,$4-1,$5,id,$6,$7,name,locus;
-}' $PT_GFF \
-    > blast_out/phaeodactylum_genes.bed
+  if(gene_id=="NA") gene_id=id
+  print $1, $4-1, $5, gene_id, id, $7
+}' /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.gff3 \
+> 00_inputs/diatom_BRAKER_ET_genes.bed
 ```
-This command converts *P. tricornutum* gene annotations from GFF3 to BED format and extracts gene IDs, names, and locus tags.
+This command converts the accepted BRAKER4 ET diatom gene models from GFF3 to BED format.
+
 ```bash
-awk 'BEGIN{OFS="\t"}
-{
-  seq=$1;
-  if (seq ~ /\|/) {
-    split(seq,a,"|");
-    seq=a[2];
-  }
-  $1=seq;
-  print
-}' blast_out/blast_hits_on_phaeodactylum.bed \
-    > blast_out/blast_hits_on_phaeodactylum.normalized.bed
+wc -l 00_inputs/diatom_BRAKER_ET_genes.bed
 ```
-This command normalizes *Phaeodactylum* sequence IDs so BLAST hit coordinates and GFF-derived gene coordinates use matching names.
+Output:
+
+```text
+15,102 BRAKER4 ET genes
+```
+### 16.8 Convert raw BLASTN hits to BED intervals
+```bash
+awk -F'\t' '
+BEGIN{OFS="\t"}
+{
+  hit=sprintf("hit_%06d", NR)
+
+  qstart=$7; qend=$8
+  if(qstart <= qend){qbstart=qstart-1; qbend=qend; qstrand="+"}
+  else{qbstart=qend-1; qbend=qstart; qstrand="-"}
+
+  sstart=$9; send=$10
+  if(sstart <= send){sbstart=sstart-1; sbend=send; sstrand="+"}
+  else{sbstart=send-1; sbend=sstart; sstrand="-"}
+
+  print $1, qbstart, qbend, hit, $3, $4, $11, $12, $13, $2, $9, $10, qstrand > "02_blast/phaeodactylum_blast_intervals.bed"
+  print $2, sbstart, sbend, hit, $3, $4, $11, $12, $14, $1, $7, $8, sstrand > "02_blast/diatom_blast_intervals.bed"
+}' 02_blast/phaeodactylum_vs_diatom_dcmegablast.tsv
+```
+This command converts each raw BLASTN hit into BED-like intervals on both the *Phaeodactylum* query genome and the diatom subject genome. Each BLASTN alignment was assigned a stable hit ID.
+```bash
+wc -l 02_blast/phaeodactylum_blast_intervals.bed
+wc -l 02_blast/diatom_blast_intervals.bed
+```
+Output:
+```text
+28,934 Phaeodactylum-side BLAST intervals
+28,934 diatom-side BLAST intervals
+```
+### 16.9 Link BLASTN hits to *Phaeodactylum* genes
 ```bash
 bedtools intersect \
-    -a blast_out/blast_hits_on_phaeodactylum.normalized.bed \
-    -b blast_out/phaeodactylum_genes.bed \
-    -wa -wb \
-    > blast_out/blast_hits_overlapping_phaeodactylum_genes.tsv
+    -a 02_blast/phaeodactylum_blast_intervals.bed \
+    -b 00_inputs/phaeodactylum_genes.bed \
+    -wa -wb -loj \
+> 03_filtered/phaeodactylum_hits_with_PT_genes.tsv
 ```
-This command identifies *Phaeodactylum* genes overlapping the filtered BLASTN hit regions.
-
+This command identifies *P. tricornutum* genes that overlap each BLASTN interval. The `-loj` option keeps all BLASTN hits, including hits that do not overlap an annotated *Phaeodactylum* gene.
 ```bash
-awk 'BEGIN{FS=OFS="\t";
-print "blast_hit_id","pt_gene_id","pt_gene_name","pt_locus_tag"
-}
-{
-  print $4,$16,$19,$20
-}' blast_out/blast_hits_overlapping_phaeodactylum_genes.tsv \
-    > blast_out/blast_hit_to_phaeodactylum_gene.tsv
+wc -l 03_filtered/phaeodactylum_hits_with_PT_genes.tsv
 ```
+Output:
 
-This command creates a compact mapping table between each BLAST hit ID and overlapping *Phaeodactylum* gene identifiers.
-
-The mapping table was merged with the clean best-hit table using Python:
-
+```text
+28,976 rows
+```
+The row count is slightly higher than the raw BLASTN hit count because some BLASTN intervals overlap more than one *Phaeodactylum* gene.
+### 16.10 Link BLASTN hits to diatom BRAKER4 ET genes
+```bash
+bedtools intersect \
+    -a 02_blast/diatom_blast_intervals.bed \
+    -b 00_inputs/diatom_BRAKER_ET_genes.bed \
+    -wa -wb -loj \
+> 03_filtered/diatom_hits_with_BRAKER_ET_genes.tsv
+```
+This command identifies diatom BRAKER4 ET genes that overlap each BLASTN interval. The `-loj` option keeps all BLASTN hits, including hits that do not overlap an annotated diatom gene.
+```bash
+wc -l 03_filtered/diatom_hits_with_BRAKER_ET_genes.tsv
+```
+Output:
+```text
+29,005 rows
+```
+The row count is slightly higher than the raw BLASTN hit count because some BLASTN intervals overlap more than one diatom gene.
+### 16.11 Create final BLASTN gene-linked table
+The raw BLASTN output, the *Phaeodactylum* gene-overlap table, and the diatom BRAKER4 ET gene-overlap table were merged using a custom Python script.
 ```bash
 python scripts/06_merge_phaeodactylum_blast_hits.py
 ```
-
-This script adds PHATRDRAFT gene IDs, gene names, and locus tags to the clean diatom best-hit table.
-
-```bash
-awk 'BEGIN{FS=OFS="\t"}
-NR==1 {print; next}
-{
-  gsub(/gene-/, "", $15);
-  print
-}' blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.with_PT_genes.tsv \
-    > blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.with_PT_genes.cleanIDs.tsv
-```
-
-This command removes the `gene-` prefix from PHATRDRAFT identifiers.
-
-```bash
-{
-  echo -e "diatom_contig\tdiatom_gene_start\tdiatom_gene_end\tdiatom_gene_id\tdiatom_gene_strand\tblast_hit_id\tbitscore\tblast_strand\tpt_contig\tpt_start\tpt_end\tpident\taln_len\tevalue\tpt_gene_id\tpt_gene_name\tpt_locus_tag"
-  tail -n +2 blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.with_PT_genes.cleanIDs.tsv
-} > blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.with_PT_genes.cleanIDs.fixed.tsv
-```
-
-This command rewrites the table header and creates the final cleaned BLASTN best-hit table.
-
-### 16.12 Final comparative-genomics outputs
-
+This script keeps one row per raw BLASTN hit and adds overlapping gene information from both genomes. When multiple genes overlap the same BLASTN interval, gene IDs are collapsed into semicolon-separated fields.
+Final output:
 ```text
-blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.blastn.tsv
-blast_out/18_diatom_nuclear_v1_vs_phaeodactylum.filtered.tsv
-blast_out/18_diatom_nuclear_v1_genes_with_phaeodactylum_hits.tsv
-blast_out/18_diatom_nuclear_v1_genes_best_phaeodactylum_hit.tsv
-blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.clean.tsv
-blast_out/blast_hit_to_phaeodactylum_gene.tsv
-blast_out/18_diatom_nuclear_v1_best_hits_to_phaeodactylum.with_PT_genes.cleanIDs.fixed.tsv
+04_summary/phaeodactylum_vs_diatom_BLASTN_with_PT_and_BRAKER_ET_genes.tsv
 ```
-### 16.13 Summary
-Pairwise BLASTN comparison between the updated nuclear-enriched diatom genome and the *Phaeodactylum tricornutum* reference genome identified 4,895 filtered nucleotide alignments using thresholds of ≥70% identity, alignment length ≥200 bp, and e-value ≤1e-10.
+The final table contained:
+```text
+28,934 BLASTN hits
+24 columns
+```
+Main columns:
+```text
+blast_hit_id
+pt_contig
+diatom_contig
+pident
+aln_len
+mismatch
+gapopen
+pt_start
+pt_end
+diatom_start
+diatom_end
+evalue
+bitscore
+pt_len
+diatom_len
+qcovs
+pt_gene_id
+pt_gene_name
+pt_gene_symbol
+pt_locus_tag
+pt_gene_strand
+diatom_gene_id
+diatom_gene_attr_id
+diatom_gene_strand
+```
+### 16.12 Summary of final BLASTN gene-linked table
+The final merged table was summarized to count how many raw BLASTN hits overlapped annotated genes in *Phaeodactylum*, BRAKER4 ET genes in the diatom genome, or genes on both sides.
+Summary:
+```text
+total_blast_hits                         28,934
+hits_with_PT_gene                        8,529
+hits_with_diatom_BRAKER_ET_gene          6,693
+hits_with_both_PT_and_diatom_gene        6,173
+unique_PT_genes_hit                      3,202
+unique_diatom_BRAKER_ET_genes_hit        3,386
+```
+### 16.13 Final comparative-genomics outputs
+```text
+00_inputs/phaeodactylum_genome.fna
+00_inputs/phaeodactylum_ASM15095v2.gff3
+00_inputs/phaeodactylum_genes.bed
+00_inputs/diatom_BRAKER_ET_genes.bed
 
-These alignments overlapped 1,492 of 15,048 predicted nuclear genes, corresponding to 9.91% of the nuclear gene set. For the best hit per gene, the mean nucleotide identity was 72.94%, and the mean alignment length was 596 bp.
+01_db/diatom_genome_blastdb.*
 
-The best-hit regions were further mapped to annotated *P. tricornutum* PHATRDRAFT gene models. Of the 1,492 best-hit diatom genes, 1,446 overlapped annotated *P. tricornutum* gene models, representing 1,314 unique PHATRDRAFT genes.
+02_blast/phaeodactylum_vs_diatom_dcmegablast.tsv
+02_blast/phaeodactylum_vs_diatom_dcmegablast.header.tsv
+02_blast/phaeodactylum_blast_intervals.bed
+02_blast/diatom_blast_intervals.bed
 
-This analysis provides a conservative nucleotide-level comparison between the candidate diatom genome and *P. tricornutum*. Because nucleotide similarity can be lost despite conservation at the protein level, this result should be treated as a genome-level similarity screen rather than a full orthology analysis.
+03_filtered/phaeodactylum_hits_with_PT_genes.tsv
+03_filtered/diatom_hits_with_BRAKER_ET_genes.tsv
+
+04_summary/phaeodactylum_vs_diatom_BLASTN_with_PT_and_BRAKER_ET_genes.tsv
+```
+### 16.14 Interpretation
+
+The raw pairwise BLASTN comparison identified 28,934 nucleotide alignments between the *P. tricornutum* reference genome and the diatom genome. These raw alignments were retained without filtering to preserve the full nucleotide-level comparison.
+
+Of these raw BLASTN hits, 8,529 overlapped annotated *P. tricornutum* genes, 6,693 overlapped BRAKER4 ET gene models in the diatom genome, and 6,173 overlapped genes on both sides. In total, the BLASTN hits represented 3,202 unique *P. tricornutum* genes and 3,386 unique diatom BRAKER4 ET genes.
+
+This analysis provides a gene-linked nucleotide similarity table between the diatom genome and *P. tricornutum*. Because nucleotide-level similarity does not fully capture protein-level conservation or gene orthology, the table should be interpreted as a genome-level similarity screen rather than a definitive orthology map.
 
 </details>
 
