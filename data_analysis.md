@@ -78,7 +78,10 @@ scripts/
 ├── 09_add_ONLY_Average_TPM_clean.py
 ├── 10_make_FINAL_clean_BRAKER_isoform_table.py
 ├── 11_make_boss_review_gene_table_PTredo.py
-└── 12_make_hic_network_files.py
+├── 12_make_hic_network_files.py
+├── 13_make_hic_primary_mapq30_pid95_tables.py
+├── 14_make_hic_pair_type_tables.py
+└── 15_make_hic_simple_mixed_read_table.py
 ```
 Script purposes:
 ```text
@@ -117,6 +120,15 @@ Script purposes:
 
 12_make_hic_network_files.py
   Converts the Hi-C contig-contact table into GEXF and GraphML network files.
+
+13_make_hic_primary_mapq30_pid95_tables.py
+  Parses separate Hi-C R1 and R2 BAM files, removes non-primary alignments, and keeps MAPQ >= 30 and percent identity >= 95 alignments.
+
+14_make_hic_pair_type_tables.py
+  Joins read 1 and read 2 by read ID, assigns contig types using the diatom draft genome, and creates high-confidence Hi-C pair-type tables.
+
+15_make_hic_simple_mixed_read_table.py
+  Creates the final simplified read-level table for mixed diatom-bacterial Hi-C pairs.
 ```
 ---
 
@@ -2019,9 +2031,10 @@ The simplified table is intended for manual review, pathway curation, and discus
 <details>
 <summary><strong>18. Hi-C read mapping and contig-level proximity-ligation network</strong> - BWA-MEM, samtools, awk, YaHS, and Python</summary>
 
-Hi-C paired-end reads were incorporated after the main assembly, annotation, expression, and comparative-genomics workflow. The goal was to assess how broadly the polished whole assembly was represented in the proximity-ligation dataset and to identify contigs connected by Hi-C read pairs.
+Hi-C paired-end reads were incorporated after the main assembly, annotation, expression, and comparative-genomics workflow. The goal was to assess how broadly the polished whole assembly was represented in the proximity-ligation dataset, identify contigs connected by Hi-C read pairs, and separately test high-confidence diatom-bacterial read-pair contacts.
 
-The Hi-C analysis was performed on the polished whole assembly rather than the nuclear-enriched subset because the initial goal was to evaluate contig-level representation and proximity-ligation links across the whole assembly.
+The Hi-C analysis was performed on the polished whole assembly rather than the nuclear-enriched subset because the proximity-ligation reads were generated from the complete diatom-associated consortium. This allowed diatom, bacterial, and mixed diatom-bacterial contacts to be evaluated in the same coordinate space.
+
 ### 18.1 Input files and working directories
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia
@@ -2030,6 +2043,7 @@ mkdir -p hi-c_diatoms/01_qc
 mkdir -p hi-c_diatoms/02_map_to_whole_assembly
 mkdir -p hi-c_diatoms/03_yahs_scaffolding
 mkdir -p hi-c_diatoms/04_contact_maps
+mkdir -p hic_bwa_separate_reads/{00_inputs,01_bwa_index,02_alignments,03_tables,04_logs}
 ```
 Input Hi-C reads:
 ```text
@@ -2038,11 +2052,18 @@ Input Hi-C reads:
 ```
 
 Input polished whole assembly:
-
 ```text
 /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta
 ```
-### 18.2 Map Hi-C reads to the polished whole assembly
+
+Diatom draft genome used for contig-type classification in the separate-read analysis:
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta
+```
+
+Contigs present in `18_diatom.fasta` were treated as diatom contigs. All remaining contigs in the polished whole assembly were treated as bacterial for the purpose of the diatom-bacterial Hi-C read-pair screen.
+
+### 18.2 Map Hi-C reads to the polished whole assembly as paired-end reads
 The original assembly directory was not writable by the Hi-C job, so the assembly was linked into the Hi-C working directory and indexed there.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
@@ -2092,6 +2113,7 @@ samtools idxstats hic_to_whole_assembly.coord_sorted.bam \
     > hic_to_whole_assembly.idxstats.txt
 ```
 This command reports mapped and unmapped Hi-C read counts per contig.
+
 Read-level mapping summary:
 ```text
 Primary reads:              890,810
@@ -2104,7 +2126,7 @@ Singletons:                 54,019 reads = 6.06%
 ### 18.3 Summarize contig-level Hi-C representation
 ```bash
 awk 'BEGIN {
-    OFS="\t";
+    OFS="	";
     print "contig","length_bp","mapped_HiC_reads","unmapped_HiC_reads","HiC_mapped"
 }
 $1!="*" {
@@ -2133,10 +2155,14 @@ This command classifies each assembly contig as represented in the Hi-C dataset 
     }
     END {
         unmapped = total - mapped;
-        printf "Total contigs: %d\n", total;
-        printf "Contigs with >=1 Hi-C read mapped: %d\n", mapped;
-        printf "Contigs with 0 Hi-C reads mapped: %d\n", unmapped;
-        printf "Percent contigs with Hi-C reads mapped: %.2f%%\n", (mapped/total)*100;
+        printf "Total contigs: %d
+", total;
+        printf "Contigs with >=1 Hi-C read mapped: %d
+", mapped;
+        printf "Contigs with 0 Hi-C reads mapped: %d
+", unmapped;
+        printf "Percent contigs with Hi-C reads mapped: %.2f%%
+", (mapped/total)*100;
     }
     ' hic_to_whole_assembly.idxstats.txt
     echo
@@ -2171,6 +2197,7 @@ seqkit stats \
     > DL_diatom_whole_hic_yahs.seqkit_stats.txt
 ```
 This command compares the polished input assembly with the YaHS scaffolded output.
+
 YaHS scaffold summary:
 ```text
 Input assembly:
@@ -2185,12 +2212,12 @@ maximum scaffold length: 5,424,378 bp
 ```
 The YaHS run did not increase maximum scaffold length and increased the number of sequences. Therefore, the whole-assembly YaHS output was treated as exploratory rather than as a final scaffolded assembly.
 ### 18.5 Extract all-primary inter-contig Hi-C contacts
-The final contig-contact analysis used primary mapped Hi-C read pairs without applying a MAPQ cutoff. Unmapped reads, mate-unmapped reads, secondary alignments, and supplementary alignments were excluded. Each read pair was counted once if the two mates mapped to different contigs.
+The final contig-contact network used primary mapped Hi-C read pairs from the paired-end BWA-MEM mapping without applying a MAPQ cutoff. Unmapped reads, mate-unmapped reads, secondary alignments, and supplementary alignments were excluded. Each read pair was counted once if the two mates mapped to different contigs.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
 BAM=hic_to_whole_assembly.name_sorted.bam
 samtools view -@ 8 -f 1 -F 2316 $BAM \
-    | awk 'BEGIN{OFS="\t"}
+    | awk 'BEGIN{OFS="	"}
     {
         q=$1
         r=$3
@@ -2236,14 +2263,14 @@ samtools view -@ 8 -f 1 -F 2316 $BAM \
     }' \
     | sort -S 20G \
     | uniq -c \
-    | awk 'BEGIN{OFS="\t"; print "contig_A","contig_B","HiC_contact_pairs"}
+    | awk 'BEGIN{OFS="	"; print "contig_A","contig_B","HiC_contact_pairs"}
            {print $2,$3,$1}' \
     | sort -k3,3nr \
     > hic_intercontig_contacts_all_primary_pairs.tsv
 ```
 This command extracts inter-contig Hi-C contacts from primary mapped read pairs and counts the number of read pairs supporting each contig-to-contig link.
 ```bash
-awk 'BEGIN{OFS="\t"}
+awk 'BEGIN{OFS="	"}
 NR==FNR {
     len[$1]=$2
     next
@@ -2259,6 +2286,7 @@ FNR==1 {
    > hic_intercontig_contacts_all_primary_pairs.with_lengths.tsv
 ```
 This command adds contig lengths to the full inter-contig Hi-C contact table.
+
 The main contact table reports:
 ```text
 contig_A
@@ -2269,21 +2297,18 @@ length of contig_B
 ```
 Each row represents one pair of contigs connected by Hi-C proximity-ligation evidence.
 ### 18.6 Summarize connected contigs
-
 ```bash
 awk 'NR>1 {print $1; print $2}' \
     hic_intercontig_contacts_all_primary_pairs.tsv \
     | sort -u \
     > hic_connected_contigs_all_primary_pairs.txt
 ```
-
 This command lists every contig involved in at least one inter-contig Hi-C contact.
-
 ```bash
 {
-    echo -e "contig\tnumber_of_connected_contigs\ttotal_intercontig_HiC_pairs\tstrongest_single_contact_pairs"
+    echo -e "contig	number_of_connected_contigs	total_intercontig_HiC_pairs	strongest_single_contact_pairs"
 
-    awk 'BEGIN{OFS="\t"}
+    awk 'BEGIN{OFS="	"}
     NR==1 {next}
     {
         a=$1
@@ -2311,24 +2336,25 @@ This command lists every contig involved in at least one inter-contig Hi-C conta
 } > hic_contig_connectivity_summary_all_primary_pairs.tsv
 ```
 This command summarizes each connected contig by number of partner contigs, total inter-contig Hi-C pairs, and strongest single contig-to-contig contact.
+
 Final all-primary contact-network summary:
 ```text
 Connected contigs: 3,770
 Inter-contig Hi-C links: 75,703
 ```
-
-### 18.7 Convert the contact table to network files
+### 18.7 Convert the all-primary contact table to network files
 The full contig-contact table was converted into GEXF and GraphML network files using a small helper Python script.
 The script is saved as:
 ```text
-scripts/11_make_hic_network_files.py
+scripts/12_make_hic_network_files.py
 ```
 Run the script with:
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
-python scripts/11_make_hic_network_files.py
+python scripts/12_make_hic_network_files.py
 ```
 This script reads the Hi-C inter-contig contact table and exports the contact network in GEXF and GraphML formats.
+
 The script generated:
 ```text
 hic_contig_network_all_primary_pairs.gexf
@@ -2345,8 +2371,222 @@ Node = assembly contig
 Edge = Hi-C proximity-ligation contact between two contigs
 Edge weight = number of Hi-C read pairs supporting the contig-to-contig connection
 ```
-### 18.8 Organize final Hi-C outputs
-After generating the final mapping and contact-network outputs, files were organized into final mapping and contact-map folders.
+
+### 18.8 High-confidence separate-read BWA mapping for diatom-bacterial contacts
+A second BWA-MEM mapping was performed to keep the two Hi-C read files separate. This made it possible to ask, for each read ID, whether read 1 and read 2 mapped to different biological fractions of the whole assembly.
+
+The separate-read analysis used a stricter read-level filter than the all-primary contact network:
+```text
+Primary alignments only
+MAPQ >= 30
+Percent identity >= 95%
+```
+
+Set up clean links to the whole assembly and separate Hi-C read files:
+```bash
+cd /work/ebg_lab/eb/diatom_consortia
+
+mkdir -p hic_bwa_separate_reads/{00_inputs,01_bwa_index,02_alignments,03_tables,04_logs}
+
+ln -sf /work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta \
+    hic_bwa_separate_reads/00_inputs/whole_assembly.fasta
+
+ln -sf /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R1_001.fastq.gz \
+    hic_bwa_separate_reads/00_inputs/HiC_R1.fastq.gz
+
+ln -sf /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/1574499_S6_L001_R2_001.fastq.gz \
+    hic_bwa_separate_reads/00_inputs/HiC_R2.fastq.gz
+```
+Index the whole assembly for the separate-read analysis:
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
+
+conda activate hic_diatom
+
+bwa index \
+    -p 01_bwa_index/whole_assembly \
+    00_inputs/whole_assembly.fasta \
+    2> 04_logs/bwa_index.log
+```
+The index files created were:
+```text
+whole_assembly.amb
+whole_assembly.ann
+whole_assembly.bwt
+whole_assembly.pac
+whole_assembly.sa
+```
+
+The following SLURM script maps read 1 and read 2 independently against the same BWA index and creates two sorted BAM files.
+```bash
+#!/bin/bash
+####### Reserve computing resources #############
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=120:00:00
+#SBATCH --mem=100G
+#SBATCH --partition=cpu2023
+#SBATCH --job-name=hic_bwa_sep
+#SBATCH --output=04_logs/hic_bwa_sep_%j.out
+#SBATCH --error=04_logs/hic_bwa_sep_%j.err
+####### Run your script #########################
+
+set -euo pipefail
+
+cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
+
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate hic_diatom
+
+THREADS=32
+INDEX=01_bwa_index/whole_assembly
+
+mkdir -p 02_alignments 04_logs
+
+rm -f 02_alignments/HiC_R1.sorted.bam 02_alignments/HiC_R1.sorted.bam.bai
+rm -f 02_alignments/HiC_R2.sorted.bam 02_alignments/HiC_R2.sorted.bam.bai
+
+echo "Started separate Hi-C BWA mapping at: $(date)"
+echo "BWA: $(which bwa)"
+echo "samtools: $(which samtools)"
+
+echo "Mapping R1 only..."
+bwa mem -t ${THREADS} ${INDEX} 00_inputs/HiC_R1.fastq.gz 2> 04_logs/bwa_mem_R1.log | \
+samtools sort -@ ${THREADS} -m2G -T 02_alignments/HiC_R1.tmp -o 02_alignments/HiC_R1.sorted.bam -
+
+samtools index 02_alignments/HiC_R1.sorted.bam
+samtools flagstat 02_alignments/HiC_R1.sorted.bam > 04_logs/HiC_R1.flagstat.txt
+
+echo "Mapping R2 only..."
+bwa mem -t ${THREADS} ${INDEX} 00_inputs/HiC_R2.fastq.gz 2> 04_logs/bwa_mem_R2.log | \
+samtools sort -@ ${THREADS} -m2G -T 02_alignments/HiC_R2.tmp -o 02_alignments/HiC_R2.sorted.bam -
+
+samtools index 02_alignments/HiC_R2.sorted.bam
+samtools flagstat 02_alignments/HiC_R2.sorted.bam > 04_logs/HiC_R2.flagstat.txt
+
+echo "Finished separate Hi-C BWA mapping at: $(date)"
+ls -lh 02_alignments
+```
+Submit the separate-read mapping job:
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
+sbatch 01_run_bwa_mem_separate_reads.slurm
+```
+
+Separate-read mapping outputs:
+```text
+02_alignments/HiC_R1.sorted.bam
+02_alignments/HiC_R1.sorted.bam.bai
+02_alignments/HiC_R2.sorted.bam
+02_alignments/HiC_R2.sorted.bam.bai
+04_logs/HiC_R1.flagstat.txt
+04_logs/HiC_R2.flagstat.txt
+```
+
+Separate-read mapping summary:
+```text
+R1 primary reads:         445,405
+R1 primary mapped reads:  318,884
+R1 primary mapping rate:  71.59%
+
+R2 primary reads:         445,405
+R2 primary mapped reads:  304,083
+R2 primary mapping rate:  68.27%
+```
+
+### 18.9 Create high-confidence read-pair tables and classify mixed diatom-bacterial pairs
+The high-confidence separate-read tables were generated using custom Python scripts saved outside the markdown file.
+
+The script used to parse the separate BAM files, calculate percent identity from the `NM` tag and aligned CIGAR length, and retain primary MAPQ >= 30 and percent identity >= 95 alignments is saved as:
+```text
+scripts/13_make_hic_primary_mapq30_pid95_tables.py
+```
+Run the script with:
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
+conda activate hic_diatom
+python scripts/13_make_hic_primary_mapq30_pid95_tables.py
+```
+This script generated:
+```text
+03_tables/HiC_R1.primary_MAPQ30_PID95.tsv
+03_tables/HiC_R2.primary_MAPQ30_PID95.tsv
+```
+
+The script used to join read 1 and read 2 by read ID, classify contigs as diatom or bacterial, assign pair-type codes, and write full read-pair tables is saved as:
+```text
+scripts/14_make_hic_pair_type_tables.py
+```
+Run the script with:
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
+conda activate hic_diatom
+python scripts/14_make_hic_pair_type_tables.py
+```
+This script used:
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta
+/work/ebg_lab/eb/diatom_consortia/MAGS_guppy/1_sr_pypolca_output/pypolca_corrected.fasta
+```
+Contigs present in the diatom draft genome were labelled `diatom`, and all remaining whole-assembly contigs were labelled `bacterial`.
+
+The pair-type code system was:
+```text
+1 = both reads mapped to diatom contigs
+2 = both reads mapped to bacterial contigs
+3 = read 1 mapped to a diatom contig and read 2 mapped to a bacterial contig
+4 = read 1 mapped to a bacterial contig and read 2 mapped to a diatom contig
+9 = unknown or missing contig classification
+```
+
+High-confidence pair-type summary:
+```text
+both diatom:                         39,739 pairs = 64.82%
+both bacterial:                      21,224 pairs = 34.62%
+read 1 diatom, read 2 bacterial:        164 pairs = 0.27%
+read 1 bacterial, read 2 diatom:        177 pairs = 0.29%
+```
+The total number of high-confidence mixed diatom-bacterial Hi-C read pairs was:
+```text
+341 mixed read pairs
+```
+
+The final simplified mixed-pair table was generated using:
+```text
+scripts/15_make_hic_simple_mixed_read_table.py
+```
+Run the script with:
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
+conda activate hic_diatom
+python scripts/15_make_hic_simple_mixed_read_table.py
+```
+The final simple table is:
+```text
+03_tables/HiC_DIATOM_BACTERIAL_read_level_SIMPLE_COLUMNS_MAPQ30_PID95.tsv
+```
+
+Final simple table columns:
+```text
+read_id
+read_number
+contig_id
+paired_contig_id
+mapq
+percent_identity
+aligned_length_bp
+pair_type_code
+pair_type
+```
+Each mixed Hi-C pair is represented by two rows, one for read 1 and one for read 2. The row count check confirmed:
+```text
+341 unique mixed Hi-C read pairs
+682 read rows
+683 lines including header
+```
+### 18.10 Organize final Hi-C outputs
+After generating the final mapping, contact-network, and separate-read mixed-contact outputs, files were organized into final mapping and contact-map folders.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms
 mkdir -p 02_map_to_whole_assembly/final_mapping
@@ -2354,7 +2594,7 @@ mkdir -p 04_contact_maps/tables
 mkdir -p 04_contact_maps/network_files
 mkdir -p 04_contact_maps/scripts
 ```
-Final mapping files:
+Final paired-end mapping files:
 ```text
 02_map_to_whole_assembly/final_mapping/
 ├── hic_to_whole_assembly.flagstat.txt
@@ -2366,7 +2606,7 @@ Final mapping files:
 ├── hic_to_whole_assembly.coord_sorted.bam.bai
 └── pypolca_corrected.chrom.sizes
 ```
-Final contact-network files:
+Final all-primary contact-network files:
 ```text
 04_contact_maps/
 ├── tables/
@@ -2378,11 +2618,36 @@ Final contact-network files:
 │   ├── hic_contig_network_all_primary_pairs.gexf
 │   └── hic_contig_network_all_primary_pairs.graphml
 └── scripts/
-    └── 11_make_hic_network_files.py
+    └── 12_make_hic_network_files.py
 ```
-### 18.9 Final Hi-C analysis summary
+Final high-confidence separate-read mixed-contact files:
+```text
+hic_bwa_separate_reads/
+├── 02_alignments/
+│   ├── HiC_R1.sorted.bam
+│   ├── HiC_R1.sorted.bam.bai
+│   ├── HiC_R2.sorted.bam
+│   └── HiC_R2.sorted.bam.bai
+├── 03_tables/
+│   ├── whole_assembly_contig_type_map.tsv
+│   ├── HiC_R1.primary_MAPQ30_PID95.tsv
+│   ├── HiC_R2.primary_MAPQ30_PID95.tsv
+│   ├── HiC_read_pairs_MAPQ30_PID95_joined.tsv
+│   ├── HiC_read_pairs_MAPQ30_PID95_with_contig_types.tsv
+│   ├── HiC_pair_type_summary_MAPQ30_PID95.tsv
+│   ├── HiC_DIATOM_BACTERIAL_read_level_MAPQ30_PID95.tsv
+│   └── HiC_DIATOM_BACTERIAL_read_level_SIMPLE_COLUMNS_MAPQ30_PID95.tsv
+└── 04_logs/
+    ├── HiC_R1.flagstat.txt
+    ├── HiC_R2.flagstat.txt
+    ├── bwa_mem_R1.log
+    └── bwa_mem_R2.log
+```
+### 18.11 Final Hi-C analysis summary
 Hi-C reads mapped to 4,010 of 4,925 contigs in the polished whole assembly, corresponding to 81.42% of assembly contigs. At the read level, 622,967 of 890,810 primary reads mapped to the assembly, corresponding to a primary mapping rate of 69.93%.
 
 Inter-contig proximity-ligation contacts were extracted from primary mapped Hi-C read pairs without applying a MAPQ cutoff. The final all-primary contig-contact network contained 3,770 contig nodes and 75,703 inter-contig Hi-C links.
+
+A second high-confidence separate-read analysis was then used to identify mixed diatom-bacterial Hi-C read pairs. Read 1 and read 2 were mapped independently to the polished whole assembly, filtered for primary MAPQ >= 30 and percent identity >= 95 alignments, joined by read ID, and classified using the diatom draft genome as the diatom contig reference. This produced 341 high-confidence mixed diatom-bacterial Hi-C read pairs, represented as 682 read-level rows in the final simplified table.
 
 </details>
