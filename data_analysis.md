@@ -2427,19 +2427,14 @@ The following SLURM script maps read 1 and read 2 independently against the same
 #SBATCH --time=120:00:00
 #SBATCH --mem=100G
 #SBATCH --partition=cpu2023
-#SBATCH --job-name=hic_bwa_sep
-#SBATCH --output=04_logs/hic_bwa_sep_%j.out
-#SBATCH --error=04_logs/hic_bwa_sep_%j.err
 ####### Run your script #########################
 
 set -euo pipefail
 
 cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
 
-source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate hic_diatom
 
-THREADS=32
 INDEX=01_bwa_index/whole_assembly
 
 mkdir -p 02_alignments 04_logs
@@ -2537,7 +2532,6 @@ The pair-type code system was:
 2 = both reads mapped to bacterial contigs
 3 = read 1 mapped to a diatom contig and read 2 mapped to a bacterial contig
 4 = read 1 mapped to a bacterial contig and read 2 mapped to a diatom contig
-9 = unknown or missing contig classification
 ```
 
 High-confidence pair-type summary:
