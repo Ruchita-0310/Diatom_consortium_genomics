@@ -672,7 +672,50 @@ Output:
 not soft-masked
 ```
 Because the genome was not pre-masked, the `genome_masked` column in `samples.csv` was left empty and internal repeat masking was enabled in `config.ini`.
-### 13.5 BRAKER4 sample file
+### 13.5 BUSCO assessment of the BRAKER4 genome input
+Genome completeness was assessed before gene prediction using BUSCO v6.0.0 and the stramenopiles_odb12 lineage dataset.
+```bash
+busco \
+    -i /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta \
+    -l stramenopiles_odb12 \
+    -m genome \
+    -o busco_18_diatom_stramenopiles_odb12 \
+    -c 24
+```
+This command evaluates the completeness of the diatom genome assembly using conserved single-copy orthologues from stramenopiles. BUSCO was run in eukaryotic genome mode using MetaEuk as the gene predictor.
+
+BUSCO configuration:
+```text
+BUSCO version:          6.0.0
+Lineage dataset:        stramenopiles_odb12
+Reference genomes:      55
+BUSCO groups:           697
+Analysis mode:          euk_genome_met
+Gene predictor:         MetaEuk 7.bba0d80
+HMMER version:          3.4
+```
+BUSCO completeness:
+```text
+C:86.1%[S:82.4%,D:3.7%],F:2.2%,M:11.8%,n:697
+
+Complete BUSCOs:                    600
+Complete and single-copy BUSCOs:   574
+Complete and duplicated BUSCOs:     26
+Fragmented BUSCOs:                  15
+Missing BUSCOs:                     82
+Total BUSCO groups searched:       697
+```
+Assembly statistics reported by BUSCO:
+```text
+Scaffolds:       3,010
+Contigs:         3,010
+Total length:    82,172,226 bp
+Sequence gaps:   0.000%
+Scaffold N50:    48 kbp
+Contig N50:      48 kbp
+```
+The assembly recovered 86.1% of the conserved stramenopiles_odb12 BUSCO set, with 82.4% present as single-copy genes and 3.7% duplicated.
+### 13.6 BRAKER4 sample file
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4
 nano samples.csv
@@ -691,7 +734,7 @@ Expected output:
 1 13
 2 13
 ```
-### 13.6 BRAKER4 configuration
+### 13.7 BRAKER4 configuration
 ```bash
 nano config.ini
 ```
@@ -721,7 +764,7 @@ run_red = True
 mode = et
 ```
 `run_red = True` enabled internal repeat masking, and `mode = et` selected the RNA-seq-only BRAKER4 ET workflow.
-### 13.7 Snakemake dry run
+### 13.8 Snakemake dry run
 ```bash
 snakemake \
     -s Snakefile \
@@ -746,7 +789,7 @@ busco_proteins
 collect_results
 ```
 The presence of `run_genemark_et` and absence of `run_genemark_etp` confirmed that BRAKER4 was configured in ET mode.
-### 13.8 BRAKER4 execution
+### 13.9 BRAKER4 execution
 ```bash
 snakemake \
     -s Snakefile \
@@ -764,7 +807,7 @@ The ET-mode run produced:
 StringTie transcripts: 9,000
 RNA-seq intron hints: 19,114
 ```
-### 13.9 Final BRAKER4 outputs
+### 13.10 Final BRAKER4 outputs
 Final outputs were collected into:
 ```bash
 /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET
@@ -794,7 +837,7 @@ gunzip -c DL_diatom.braker4.ET.cds.fna.gz > DL_diatom.braker4.ET.cds.fna
 These commands create uncompressed GFF3, GTF, protein FASTA, and CDS FASTA files for downstream annotation and table construction.
 
 No additional TSEBRA run was required because TSEBRA refinement was included within BRAKER4.
-### 13.10 Annotation statistics
+### 13.11 Annotation statistics
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/BRAKER4/final_annotation_ET
 
@@ -824,7 +867,7 @@ grep -n "\*" DL_diatom.braker4.ET.proteins.faa | head
 ```
 This command searches the predicted protein FASTA for internal stop codons.
 No internal stop codons were detected.
-### 13.11 BUSCO assessment of the final protein set
+### 13.12 BUSCO assessment of the final protein set
 ```bash
 busco \
     -i DL_diatom.braker4.ET.proteins.faa \
@@ -840,7 +883,7 @@ The final predicted protein set produced:
 ```text
 C:84.8%[S:81.1%,D:3.7%],F:1.9%,M:13.3%,n=697
 ```
-### 13.12 Annotation acceptance
+### 13.13 Annotation acceptance
 The final BRAKER4 ET annotation was accepted for downstream analysis because it produced a plausible gene set for the diatom genome assembly, showed no internal stop codon issues in the predicted protein FASTA, and recovered 84.8% of the `stramenopiles_odb12` BUSCO protein set with low duplication.
 Final accepted annotation files:
 ```text
@@ -849,7 +892,7 @@ DL_diatom.braker4.ET.gtf
 DL_diatom.braker4.ET.proteins.faa
 DL_diatom.braker4.ET.cds.fna
 ```
-### 13.13 Rationale for ET mode instead of ETP
+### 13.14 Rationale for ET mode instead of ETP
 BRAKER4 was initially tested in ETP mode, which combines RNA-seq evidence with protein evidence. However, GeneMark-ETP failed during model training. Although protein-supported alignments were generated, the GeneMark-ETP training set did not produce valid gene and transcript models.
 The failed run reported:
 ```text
