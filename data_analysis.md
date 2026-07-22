@@ -52,7 +52,7 @@ Conda environments, Singularity containers, and local HPC modules were used depe
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Assembly and polishing              | Flye, Medaka, BWA-MEM, Polypolish, Pypolca                                                                                                |
 | Read mapping and coverage           | minimap2, samtools, bedtools, seqkit                                                                                                     |
-| Assembly quality                    | BUSCO, QUAST/MetaQUAST                                                                                                                    |
+| Assembly quality                    | BUSCO                                                                                                                    |
 | Binning and bin quality             | MetaBAT2, CheckM2                                                                                                                         |
 | Taxonomy and abundance              | GTDB-Tk, MetaEuk, CoverM                                                                                                                  |
 | Organelle identification            | MetaQUAST, minimap2, bedtools, seqkit, GeSeq/OGDRAW                                                                                       |
@@ -453,10 +453,6 @@ Chloroplast reference:  MT742551
 Organelle contigs were identified by comparing (a) a candidate diatom bin and (b) the polished whole assembly against the chloroplast/mitochondrial references:
 
 ```bash
-metaquast.py 8_diatom.fasta \
-    -R organelle/ref/ \
-    -o ./8_metaquast_output
-
 metaquast.py 1_sr_pypolca_output/pypolca_corrected.fasta \
     -R organelle/ref/ \
     -o ./whole_metaquast_output
