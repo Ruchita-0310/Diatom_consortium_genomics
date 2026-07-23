@@ -564,12 +564,12 @@ Organelle contigs were identified by comparing the polished assembly against ref
 Mitogenome reference:   MT742552
 Chloroplast reference:  MT742551
 ```
-### 12.1 MetaQUAST comparison of a candidate bin
+### 12.1 MetaQUAST comparison of a candidate draft genome
 ```bash
 metaquast.py \
-    8_diatom.fasta \
+    18_diatom.fasta \
     -R /work/ebg_lab/eb/diatom_consortia/organelle/ref/ \
-    -o ./8_metaquast_output
+    -o ./18_metaquast_output
 ```
 This command compares the candidate diatom bin against the chloroplast and mitochondrial reference genomes.
 ### 12.2 MetaQUAST comparison of the polished whole assembly
