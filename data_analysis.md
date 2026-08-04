@@ -148,35 +148,7 @@ Script purposes:
 17_make_hic_simple_mixed_read_table.py
   Creates the final simplified read-level table for mixed diatom-bacterial Hi-C pairs.
 ```
-
-### Comparative-genomics Conda environment
-The whole-genome BLASTN comparisons require BLAST+, bedtools, seqkit, Python, and pandas. The environment should contain its own Python 3 interpreter so SLURM does not fall back to `/usr/bin/python3`.
-
-```bash
-conda install -n diatom_blast \
-    -c conda-forge \
-    -c bioconda \
-    python=3.9 \
-    pandas \
-    blast \
-    bedtools \
-    seqkit \
-    wget
-```
-
-Check the activated environment before submitting either comparison:
-
-```bash
-conda activate diatom_blast
-
-which python
-which python3
-python3 --version
-python3 -c "import pandas; print(pandas.__version__)"
-```
-
 ---
-
 # Analysis workflow
 Click each section to expand the commands, notes, and outputs.
 
