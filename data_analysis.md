@@ -1,6 +1,7 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, comparison with the reference diatom *Phaeodactylum tricornutum*, and Hi-C read mapping/contact-network analysis.
-The final gene table is a clean BRAKER4 isoform-level table with one row per predicted protein isoform.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, nucleotide-level comparisons with the reference diatoms *Phaeodactylum tricornutum* and *Thalassiosira pseudonana*, and Hi-C read mapping and contact-network analysis.
+
+The final gene table retains one row per BRAKER4 predicted protein isoform and includes separate gene-linked nucleotide-similarity fields for *P. tricornutum* and *T. pseudonana*. These fields are screening results and are not interpreted as confirmed orthology.
 
 ---
 
@@ -30,7 +31,11 @@ Functional annotation with Swiss-Prot, Bacillariophyta UniProtKB, InterProScan, 
    ↓
 Expression integration using best TransDecoder ORF-to-BRAKER4 mappings and Average_TPM only
    ↓
-Phaeodactylum tricornutum comparison summarized as yes/no only
+Phaeodactylum tricornutum whole-genome BLASTN comparison
+   ↓
+Thalassiosira pseudonana whole-genome BLASTN comparison
+   ↓
+Separate gene-linked yes/no fields for both reference diatoms
    ↓
 Final clean BRAKER4 isoform-level gene table for pathway curation
    ↓
@@ -58,13 +63,14 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Genome annotation                | BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, STAR, BUSCO/compleasm                                                                           |
 | Functional annotation            | DIAMOND, UniProtKB/Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, Pfam, PANTHER, Gene3D, CDD, SMART, SUPERFAMILY, ProSite, Python |
 | Expression integration           | DIAMOND, Python, pandas, TransDecoder ORFs, Average_TPM table                                                                           |
-| Comparative genomics             | NCBI Datasets, BLASTN, bedtools, Python                                                                                                 |
+| Comparative genomics             | NCBI RefSeq/FTP, wget, gzip, BLASTN, bedtools, seqkit, Python, pandas                                                                    |
 | Hi-C mapping and contact network | FastQC, MultiQC, BWA-MEM, samtools, seqkit, YaHS, awk, Python                                                                           |
 
 ---
 
 ## Repository structure for scripts
-Custom Python scripts are stored in the scripts/ directory rather than embedded directly in this markdown workflow. Scripts are numbered in the order they are used in the analysis.
+Custom Python and SLURM scripts are stored outside the main markdown page. The original analysis scripts remain in `scripts/`, while the *T. pseudonana* comparison is kept in a separate pipeline directory because it is submitted as a self-contained SLURM workflow.
+
 ```text
 scripts/
 ├── 01_classify_metaeuk_contigs.py
@@ -82,8 +88,15 @@ scripts/
 ├── 13_make_hic_primary_mapq30_pid95_tables.py
 ├── 14_make_hic_pair_type_tables.py
 └── 15_make_hic_simple_mixed_read_table.py
+
+thalassiosira_pipeline/
+├── run_thalassiosira_comparison_FIXED_PY3.sh
+├── 06_merge_thalassiosira_blast_hits.py
+└── 12_add_thalassiosira_yes_no.py
 ```
+
 Script purposes:
+
 ```text
 01_classify_metaeuk_contigs.py
   Classifies contigs using MetaEuk ORF-level taxonomy and assigns each contig to a final category.
@@ -101,7 +114,7 @@ Script purposes:
   Merges Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence into one BRAKER4 functional annotation table.
 
 06_merge_phaeodactylum_blast_hits.py
-  Adds overlapping Phaeodactylum gene information to the cleaned BLASTN comparison table.
+  Collapses Phaeodactylum and Deer Lake gene overlaps to one row per raw BLASTN hit.
 
 07_add_BRAKER_lengths_clean.py
   Adds BRAKER4 coordinates, contig IDs, strand, gene length, CDS length, and protein length to each isoform.
@@ -109,14 +122,14 @@ Script purposes:
 08_make_best_ORF_to_BRAKER_mapping_clean.py
   Parses TransDecoder ORF versus BRAKER4 DIAMOND output and keeps one best BRAKER4 hit per TransDecoder ORF.
 
-09_add_Average_TPM_to_BRAKER_isoforms.py
-  Adds the matching TransDecoder ORF ID and Average_TPM value to BRAKER4 isoforms using the best ORF-to-BRAKER mapping.
+09_add_ONLY_Average_TPM_clean.py
+  Adds the selected TransDecoder ORF ID and Average_TPM value to BRAKER4 isoforms.
 
-10_make_clean_BRAKER_isoform_table.py
+10_make_FINAL_clean_BRAKER_isoform_table.py
   Creates the final clean BRAKER4 isoform-level table with one row per predicted protein isoform.
 
 11_make_boss_review_gene_table_PTredo.py
-  Creates the simplified seven-column review table with gene ID, contig ID, compartment, gene length, functional annotation, Average_TPM, and redo Phaeodactylum yes/no status.
+  Creates the simplified review table containing the core annotation, expression, compartment, and Phaeodactylum comparison fields.
 
 12_make_hic_network_files.py
   Converts the Hi-C contig-contact table into GEXF and GraphML network files.
@@ -129,7 +142,43 @@ Script purposes:
 
 15_make_hic_simple_mixed_read_table.py
   Creates the final simplified read-level table for mixed diatom-bacterial Hi-C pairs.
+
+run_thalassiosira_comparison_FIXED_PY3.sh
+  Runs the complete Thalassiosira-to-Deer-Lake nucleotide comparison as a SLURM job.
+
+06_merge_thalassiosira_blast_hits.py
+  Collapses Thalassiosira and Deer Lake gene overlaps to one row per raw BLASTN hit.
+
+12_add_thalassiosira_yes_no.py
+  Preserves the Phaeodactylum field and adds present_in_Thalassiosira_pseudonana to the final isoform and review tables.
 ```
+
+### Comparative-genomics Conda environment
+The whole-genome BLASTN comparisons require BLAST+, bedtools, seqkit, Python, and pandas. The environment should contain its own Python 3 interpreter so SLURM does not fall back to `/usr/bin/python3`.
+
+```bash
+conda install -n diatom_blast \
+    -c conda-forge \
+    -c bioconda \
+    python=3.9 \
+    pandas \
+    blast \
+    bedtools \
+    seqkit \
+    wget
+```
+
+Check the activated environment before submitting either comparison:
+
+```bash
+conda activate diatom_blast
+
+which python
+which python3
+python3 --version
+python3 -c "import pandas; print(pandas.__version__)"
+```
+
 ---
 
 # Analysis workflow
@@ -1136,6 +1185,14 @@ sbatch slurm/interproscan_diatom_full.sh
 The SLURM script used was:
 ```bash
 #!/bin/bash
+####### Reserve computing resources #############
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=120:00:00
+#SBATCH --mem=100G
+#SBATCH --partition=cpu2025
+####### Run your script #########################
 set -euo pipefail
 
 source ~/miniforge3/etc/profile.d/conda.sh
@@ -1837,197 +1894,578 @@ This analysis provides a gene-linked nucleotide similarity table between the dia
 ---
 
 <details>
-<summary><strong>17. Clean BRAKER4 isoform-level gene table construction</strong> - functional annotation, Average_TPM, and Phaeodactylum yes/no</summary>
 
-This section describes the construction of the final clean BRAKER4 isoform-level gene tables used for pathway curation, manual review, and comparison with *Phaeodactylum tricornutum*. The workflow starts from the accepted BRAKER4 ET annotation and integrates functional annotation, BRAKER4 length fields, transcriptome expression, compartment labels, and a simplified *P. tricornutum* yes/no column.
+<details>
+<summary><strong>17. Pairwise genome comparison with <em>Thalassiosira pseudonana</em></strong> - SLURM, BLASTN, GFF3, bedtools, and Python</summary>
 
-The final tables retain one row per BRAKER4 predicted protein isoform. BRAKER4 isoform IDs were not collapsed, GenBank-derived organelle rows were not appended, all-hit TPM summaries were not used, and detailed *P. tricornutum* BLASTN hit columns were not retained in the final review tables.
-### 17.1 Clean rebuild directory
+A second whole-genome nucleotide comparison was performed using *Thalassiosira pseudonana* CCMP1335. The analysis mirrors the *Phaeodactylum tricornutum* workflow: the complete reference genome is used as the BLASTN query, the Deer Lake diatom genome is used as the nucleotide database, every reported alignment is retained, and gene models overlapping the aligned intervals are assigned on both genomes.
+
+This comparison is a nucleotide-level gene-linked similarity screen. It is not a reciprocal-best-hit analysis and should not be interpreted as confirmed orthology.
+
+### 17.1 Reference assembly and directory structure
+The NCBI RefSeq assembly used for *T. pseudonana* was:
+
+```text
+Species:             Thalassiosira pseudonana
+Strain:              CCMP1335
+RefSeq accession:    GCF_000149405.2
+Assembly name:       ASM14940v2
+```
+
+The comparison working directory was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_to_diatom_blastn_redo
+```
+
+The SLURM and companion Python scripts were stored in:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline
+```
+
+The pipeline directory contains:
+
+```text
+run_thalassiosira_comparison_FIXED_PY3.sh
+06_merge_thalassiosira_blast_hits.py
+12_add_thalassiosira_yes_no.py
+```
+
+### 17.2 Store the reference genome in the home directory
+To reduce project-directory storage, the *T. pseudonana* genome and GFF3 are streamed directly into the home directory:
+
+```text
+$HOME/databases/thalassiosira_pseudonana/GCF_000149405.2_ASM14940v2/
+```
+
+Reference files:
+
+```text
+Thalassiosira_pseudonana_ASM14940v2_GCF_000149405.2_genomic.fna
+thalassiosira_ASM14940v2.gff3
+```
+
+Only symbolic links are created under the project analysis directory:
+
+```text
+00_inputs/thalassiosira_genome.fna
+00_inputs/thalassiosira_ASM14940v2.gff3
+```
+
+The download is streamed through `gzip -dc`, so compressed and uncompressed copies are not stored simultaneously:
+
+```bash
+wget -qO- "${REF_FTP}/${REF_PREFIX}_genomic.fna.gz" \
+    | gzip -dc > "${REF_GENOME}.tmp"
+
+mv "${REF_GENOME}.tmp" "${REF_GENOME}"
+```
+
+The matching GFF3 is downloaded using the same approach.
+
+### 17.3 SLURM resource request
+The comparison script begins with the standard ARC resource request:
+
+```bash
+#!/bin/bash
+####### Reserve computing resources #############
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=120:00:00
+#SBATCH --mem=100G
+#SBATCH --partition=cpu2025
+####### Run your script #########################
+```
+
+The script explicitly sources Conda and activates the comparative-genomics environment:
+
+```bash
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate diatom_blast
+```
+
+The companion merge script is referenced by its absolute path so that SLURM does not search for it under `/var/spool/slurmd/`:
+
+```bash
+PIPELINE_DIR=/work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline
+MERGE_SCRIPT=${PIPELINE_DIR}/06_merge_thalassiosira_blast_hits.py
+```
+
+### 17.4 Submit the comparison
+Submit the job from the pipeline directory:
+
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline
+
+sbatch run_thalassiosira_comparison_FIXED_PY3.sh
+```
+
+The Python merge script must exist at:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline/06_merge_thalassiosira_blast_hits.py
+```
+
+Check the required files before submission:
+
+```bash
+ls -lh \
+    run_thalassiosira_comparison_FIXED_PY3.sh \
+    06_merge_thalassiosira_blast_hits.py
+```
+
+### 17.5 Build the Deer Lake nucleotide database
+The same Deer Lake genome used for the *Phaeodactylum* comparison is linked into the new working directory:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta
+```
+
+The BLAST database is built with:
+
+```bash
+makeblastdb \
+    -in 00_inputs/diatom_genome.fasta \
+    -dbtype nucl \
+    -parse_seqids \
+    -out 01_db/diatom_genome_blastdb \
+    -title "DL_diatom_genome"
+```
+
+### 17.6 Run *Thalassiosira* versus Deer Lake BLASTN
+The reference genome is used as the query and the Deer Lake assembly is used as the database:
+
+```bash
+blastn \
+    -task dc-megablast \
+    -query 00_inputs/thalassiosira_genome.fna \
+    -db 01_db/diatom_genome_blastdb \
+    -out 02_blast/thalassiosira_vs_diatom_dcmegablast.tsv \
+    -evalue 1e-10 \
+    -perc_identity 60 \
+    -num_threads "${SLURM_CPUS_PER_TASK:-32}" \
+    -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen qcovs"
+```
+
+These parameters are identical to the *P. tricornutum* comparison. No additional alignment-length, query-coverage, bitscore, or post-BLAST identity filter is applied.
+
+### 17.7 Convert gene models and BLASTN hits to BED
+The NCBI *T. pseudonana* GFF3 is converted to a BED table containing:
+
+```text
+contig
+gene start
+gene end
+gene ID
+gene name
+gene symbol
+locus tag
+strand
+```
+
+The accepted Deer Lake BRAKER4 ET GFF3 is converted to a separate BED table containing:
+
+```text
+contig
+gene start
+gene end
+BRAKER4 gene ID
+GFF3 attribute ID
+strand
+```
+
+Each raw BLASTN alignment is assigned a stable ID:
+
+```text
+hit_000001
+hit_000002
+hit_000003
+...
+```
+
+The query and subject coordinates are converted to BED-compatible intervals while preserving alignment orientation.
+
+### 17.8 Assign overlapping genes
+Reference-gene overlaps are identified with:
+
+```bash
+bedtools intersect \
+    -a 02_blast/thalassiosira_blast_intervals.bed \
+    -b 00_inputs/thalassiosira_genes.bed \
+    -wa -wb -loj \
+    > 03_filtered/thalassiosira_hits_with_Thalassiosira_genes.tsv
+```
+
+Deer Lake BRAKER4 gene overlaps are identified with:
+
+```bash
+bedtools intersect \
+    -a 02_blast/diatom_blast_intervals.bed \
+    -b 00_inputs/diatom_BRAKER_ET_genes.bed \
+    -wa -wb -loj \
+    > 03_filtered/diatom_hits_with_BRAKER_ET_genes.tsv
+```
+
+The `-loj` option retains BLASTN alignments even when no annotated gene overlaps the interval.
+
+### 17.9 Collapse to one row per raw BLASTN hit
+The overlap tables are merged with:
+
+```bash
+python3 scripts/06_merge_thalassiosira_blast_hits.py
+```
+
+The script:
+
+```text
+retains one output row per raw BLASTN hit
+collapses multiple overlapping genes with semicolons
+keeps alignments without annotated-gene overlaps
+writes gene-linked counts to a summary file
+does not perform additional BLASTN filtering
+```
+
+Final gene-linked output:
+
+```text
+04_summary/thalassiosira_vs_diatom_BLASTN_with_Thalassiosira_and_BRAKER_ET_genes.tsv
+```
+
+Summary output:
+
+```text
+04_summary/thalassiosira_vs_diatom_BLASTN_summary.txt
+```
+
+Main final-table columns:
+
+```text
+blast_hit_id
+thal_contig
+diatom_contig
+pident
+aln_len
+mismatch
+gapopen
+thal_start
+thal_end
+diatom_start
+diatom_end
+evalue
+bitscore
+thal_len
+diatom_len
+qcovs
+thal_gene_id
+thal_gene_name
+thal_gene_symbol
+thal_locus_tag
+thal_gene_strand
+diatom_gene_id
+diatom_gene_attr_id
+diatom_gene_strand
+```
+
+Run-specific hit and gene counts are written by the pipeline and should be added to this page only after the SLURM job completes.
+
+### 17.10 Add the *Thalassiosira* yes/no field
+The final gene-linked BLASTN table is used as a yes/no lookup. A Deer Lake BRAKER4 gene is marked `yes` only when the same raw BLASTN hit overlaps both:
+
+```text
+an annotated Thalassiosira pseudonana gene
+a Deer Lake BRAKER4 ET gene model
+```
+
+The lookup is performed using the BRAKER4 gene root. For example:
+
+```text
+g10009.t1 → g10009
+```
+
+The existing *Phaeodactylum* field is preserved and a new column is added:
+
+```text
+present_in_Thalassiosira_pseudonana
+```
+
+Run the integration script from the clean rebuild directory:
+
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
+
+conda activate diatom_blast
+
+python /work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline/12_add_thalassiosira_yes_no.py \
+    --input-final 09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
+```
+
+Default outputs:
+
+```text
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_PT_TP.tsv
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_PT_TP_sorted_by_Average_TPM.tsv
+09_final/DL_diatom_FINAL_gene_table_for_boss_PT_TP.tsv
+```
+
+The two final comparison columns are:
+
+```text
+present_in_Phaeodactylum_tricornutum
+present_in_Thalassiosira_pseudonana
+```
+
+</details>
+
+---
+
+
+<details>
+<summary><strong>18. Clean BRAKER4 isoform-level gene table construction</strong> - functional annotation, Average_TPM, and reference-diatom comparison fields</summary>
+
+This section describes the clean BRAKER4 isoform-level tables used for pathway curation, manual review, and nucleotide-level comparison with *Phaeodactylum tricornutum* and *Thalassiosira pseudonana*.
+
+The final tables retain one row per BRAKER4 predicted protein isoform. BRAKER4 isoform IDs are not collapsed, GenBank-derived organelle rows are not appended, all-hit TPM summaries are not used, and detailed BLASTN alignment columns are not carried into the final review table.
+
+### 18.1 Clean rebuild directory
 The clean rebuild was performed in:
+
 ```text
 /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW
 ```
-This directory was used to avoid carrying forward columns from older all-hit TPM summaries, earlier *Phaeodactylum* comparison outputs, and GenBank-based organelle-merging workflows.
 
-The clean rebuild directory contained separate folders for input files, DIAMOND results, best-hit annotation tables, InterProScan outputs, combined annotation files, expression integration, *Phaeodactylum* comparison files, final tables, scripts, logs, and SLURM files.
-### 17.2 Input files
-The rebuild used the accepted BRAKER4 ET protein and annotation files:
+This directory separates the accepted functional annotation, BRAKER4 length information, expression integration, comparative-genomics lookups, and final tables from older intermediate outputs.
+
+### 18.2 Accepted annotation inputs
+The rebuild used:
+
 ```text
 01_input/diatom_predicted_proteins.fa
 01_input/DL_diatom.braker4.ET.proteins.faa
 01_input/DL_diatom.braker4.ET.gff3
 ```
-Functional annotation layers were rebuilt from the following files:
+
+Functional annotation layers:
+
 ```text
 02_diamond/DL_diatom_braker4_ET_vs_swissprot.tsv
 02_diamond/DL_diatom_braker4_ET_vs_uniprot_bacillariophyta.tsv
 05_interproscan/DL_diatom_braker4_ET_interproscan.tsv
 06_combined_annotation/DL_diatom_antifam_flagged_proteins.tsv
 ```
-Expression integration used the cleaned TransDecoder peptide file and the trusted transcriptome expression table:
+
+Expression inputs:
+
 ```text
 01_input/transcriptome_orfs.transdecoder.clean.pep
 07_expression/master_with_custom_broad_categories.csv
 ```
-The *Phaeodactylum tricornutum* yes/no column was rebuilt using the redo pairwise BLASTN gene-overlap summary:
-```text
-phaeodactylum_to_diatom_blastn_redo/04_summary/phaeodactylum_vs_diatom_BLASTN_with_PT_and_BRAKER_ET_genes.tsv
-```
-This redo BLASTN summary was used only as a yes/no lookup. Detailed BLASTN fields such as PHATRDRAFT IDs, *P. tricornutum* gene names, percent identity, alignment length, bitscore, and e-value were not retained in the final clean review table.
-### 17.3 Functional annotation layers
-Functional annotations were integrated from Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, and AntiFam evidence.
 
-Swiss-Prot was used as the conservative manually reviewed annotation layer. UniProtKB Bacillariophyta was used as a diatom-focused homology layer. InterProScan contributed conserved domains, protein families, GO terms, and pathway annotations. AntiFam matches were retained as warning flags rather than functional annotations.
+Comparative-genomics inputs:
 
-Each all-protein annotation table was checked to confirm that it contained one row per BRAKER4 protein isoform plus one header line:
 ```text
-16,947 BRAKER4 protein isoforms + 1 header = 16,948 lines
+/work/ebg_lab/eb/diatom_consortia/phaeodactylum_to_diatom_blastn_redo/04_summary/phaeodactylum_vs_diatom_BLASTN_with_PT_and_BRAKER_ET_genes.tsv
+
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_to_diatom_blastn_redo/04_summary/thalassiosira_vs_diatom_BLASTN_with_Thalassiosira_and_BRAKER_ET_genes.tsv
 ```
-The two AntiFam-flagged proteins were retained in the master annotation table:
+
+The comparative-genomics files are used only as gene-root yes/no lookups.
+
+### 18.3 Functional annotation integration
+Functional annotations were integrated from Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, and AntiFam.
+
+The master table contains one row per BRAKER4 protein isoform:
+
+```text
+16,947 BRAKER4 protein isoforms
+16,948 lines including the header
+```
+
+Master functional annotation table:
+
+```text
+06_combined_annotation/DL_diatom_master_functional_annotation.tsv
+```
+
+The two AntiFam-flagged proteins were retained as warning flags:
+
 ```text
 g10893.t1    ANF00012    tRNA
 g11404.t1    ANF00005    Antisense to 23S rRNA
 ```
-The merged master functional annotation table was:
+
+### 18.4 BRAKER4 coordinates and lengths
+BRAKER4 GFF3 coordinates were added to each isoform, including:
+
 ```text
-06_combined_annotation/DL_diatom_master_functional_annotation.tsv
+contig ID
+gene start
+gene end
+strand
+gene length
+CDS length
+protein length
 ```
-This table contained:
-```text
-16,947 BRAKER4 predicted protein isoforms
-16,948 lines including the header
-```
-### 17.4 BRAKER4 gene, CDS, and protein lengths
-BRAKER4 GFF3 coordinates were added to the master annotation table. This step added the contig ID, gene start, gene end, strand, gene length, CDS length, and protein length for each BRAKER4 isoform.
-The length-augmented output file was:
+
+Output:
+
 ```text
 07_expression/DL_diatom_master_functional_annotation_with_lengths.tsv
 ```
-Observed counts were:
+
+Observed counts:
+
 ```text
 Input annotation rows:       16,947
 GFF3 transcript rows parsed: 16,947
 Rows with gene length:       16,947
 Rows missing gene length:         0
 ```
-### 17.5 TransDecoder ORF to BRAKER4 protein mapping
-TransDecoder-predicted ORFs from the metatranscriptome were aligned to the accepted BRAKER4 ET protein set using DIAMOND BLASTP. The BRAKER4 protein set was first used to build a DIAMOND database, and TransDecoder peptides were then searched against that database.
-The raw ORF-to-BRAKER4 DIAMOND output was:
+
+### 18.5 TransDecoder ORF to BRAKER4 mapping
+TransDecoder peptides were searched against the accepted BRAKER4 ET protein set using DIAMOND BLASTP.
+
+Raw output:
+
 ```text
 07_expression/transcriptome_ORFs_vs_BRAKER4_ET_proteins.tsv
 ```
+
 Raw mapping summary:
+
 ```text
 118,472 DIAMOND hit rows
 39,935 unique TransDecoder ORFs with at least one BRAKER4 hit
 14,473 unique BRAKER4 proteins hit by at least one reported ORF hit
 ```
-For expression integration, one best BRAKER4 hit was retained per TransDecoder ORF. Best-hit selection was based on alignment quality and coverage so that each ORF contributed to only one BRAKER4 protein in the final expression-mapping table.
 
-The best ORF-to-BRAKER4 mapping file was:
+One best BRAKER4 hit was retained per TransDecoder ORF:
+
 ```text
 07_expression/transdecoder_ORFs_to_BRAKER4_best_hit_per_ORF.tsv
 ```
-Observed counts for the best-hit mapping were:
+
+Best-hit summary:
+
 ```text
-Raw DIAMOND hit rows: 118,472
-Unique TransDecoder ORFs with at least one BRAKER4 hit: 39,935
-Unique BRAKER4 proteins hit by best ORF mappings: 12,277
-Best-hit file: 39,935 ORF mappings + 1 header = 39,936 lines
+39,935 ORF mappings
+12,277 unique BRAKER4 proteins represented by best ORF mappings
 ```
-### 17.6 Average_TPM integration
-Expression values were transferred from the trusted transcriptome table to BRAKER4 isoforms using the best TransDecoder ORF-to-BRAKER4 mapping.
-Only two columns were used from the transcriptome expression table:
+
+### 18.6 Average_TPM integration
+Only the trusted transcriptome fields were used:
+
 ```text
 orf
 Average_TPM
 ```
-If multiple TransDecoder ORFs mapped best to the same BRAKER4 protein isoform, the ORF with the highest valid `Average_TPM` was retained. ORFs without valid numeric `Average_TPM` values were not used to populate the expression-supported ORF column.
 
-The expression-integrated output file was:
+If several TransDecoder ORFs mapped best to the same BRAKER4 isoform, the ORF with the highest valid `Average_TPM` was retained.
+
+Output:
+
 ```text
 07_expression/DL_diatom_master_functional_annotation_lengths_Average_TPM.tsv
 ```
-Final expression integration counts were:
-```text
-Annotation rows: 16,947
-Best ORF-to-BRAKER rows: 39,935
-BRAKER proteins with Average_TPM: 12,276
-BRAKER proteins without Average_TPM: 4,671
-BRAKER proteins with TransDecoder ORF ID: 12,276
-BRAKER proteins without TransDecoder ORF ID: 4,671
-```
-The output retained all 16,947 BRAKER4 isoforms and added:
-```text
-transdecoder_orf_id
-Average_TPM
-```
-No all-hit TPM sums, means, hit counts, or mapped ORF lists were retained.
-### 17.7 Phaeodactylum tricornutum yes/no lookup
-The final *Phaeodactylum tricornutum* column was rebuilt from the redo pairwise BLASTN gene-overlap summary:
-```text
-phaeodactylum_to_diatom_blastn_redo/04_summary/phaeodactylum_vs_diatom_BLASTN_with_PT_and_BRAKER_ET_genes.tsv
-```
-The raw pairwise BLASTN comparison identified nucleotide alignments between the *P. tricornutum* reference genome and the diatom genome. The redo summary linked BLASTN alignments to annotated genes on both sides by identifying alignments that overlapped annotated *P. tricornutum* genes and BRAKER4 ET gene models in the diatom genome.
 
-The final table used this file only as a yes/no lookup. A diatom gene was marked `yes` only when a BLASTN alignment overlapped both:
-```text
-a BRAKER4 ET gene model in the diatom genome
-an annotated Phaeodactylum tricornutum gene
-```
-The redo BLASTN table stores diatom genes as gene roots, such as:
-```text
-g10009
-g10013
-g10036
-```
-The final BRAKER4 annotation table stores isoform IDs, such as:
+Final expression counts:
 
 ```text
-g10009.t1
-g10013.t1
-g10036.t1
+Annotation rows:                         16,947
+BRAKER proteins with Average_TPM:        12,276
+BRAKER proteins without Average_TPM:      4,671
+BRAKER proteins with TransDecoder ORF:   12,276
+BRAKER proteins without ORF assignment:   4,671
 ```
-Therefore, the lookup was performed using the gene root while preserving the full BRAKER4 isoform ID in the final table. For example, `g10009.t1` was matched to the redo BLASTN gene root `g10009`.
-The only *Phaeodactylum*-derived column retained in the final table was:
+
+No all-hit TPM sums, means, hit counts, or mapped-ORF lists were retained.
+
+### 18.7 Compartment assignment
+Compartment labels were assigned from the BRAKER4 contig ID:
+
 ```text
-present_in_Phaeodactylum_tricornutum
+nuclear
+plastid_like
+mito_like
 ```
-Detailed BLASTN columns such as `blast_hit_id`, `pt_gene_id`, `pt_gene_name`, `bitscore`, `pident`, `aln_len`, and `evalue` were not retained.
-This yes/no column should be interpreted as a nucleotide-level gene-linked similarity screen. It does not represent confirmed orthology, reciprocal best hits, or protein-level conservation.
-### 17.8 Final clean BRAKER4 isoform-level table
-The clean BRAKER4 isoform-level table was created by combining functional annotation, BRAKER4 length fields, compartment labels, expression values, and the redo *P. tricornutum* yes/no lookup.
-The main clean annotation table was:
-```text
-09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
-```
-The expression-sorted version was:
-```text
-09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_sorted_by_Average_TPM.tsv
-```
-Both files contained:
-```text
-16,947 BRAKER4 isoform rows + 1 header = 16,948 lines
-```
-Final compartment counts were:
+
+Observed counts:
+
 ```text
 nuclear        16,873
 plastid_like       72
 mito_like           2
 ```
-The compartment labels were assigned from BRAKER4 contig IDs only. No GenBank-derived organelle rows were appended.
-The final redo *Phaeodactylum tricornutum* yes/no counts were:
+
+No GenBank-derived organelle gene rows were appended.
+
+### 18.8 *Phaeodactylum tricornutum* yes/no lookup
+A BRAKER4 isoform is marked `yes` when its gene root occurs in a BLASTN alignment that overlaps both an annotated *P. tricornutum* gene and a Deer Lake BRAKER4 ET gene.
+
+Column:
+
+```text
+present_in_Phaeodactylum_tricornutum
+```
+
+Observed counts from the completed redo comparison:
+
 ```text
 no     13,240
 yes     3,707
 ```
-### 17.9 Simplified gene table for manual review
-A simplified review table was also created for manual inspection and discussion. This table keeps only the key columns needed for pathway-level review and interpretation.
-The simplified review table was:
+
+This field represents gene-linked nucleotide similarity and not confirmed orthology.
+
+### 18.9 *Thalassiosira pseudonana* yes/no lookup
+The same logic is applied to the *T. pseudonana* comparison. A BRAKER4 isoform is marked `yes` only when its gene root occurs in a BLASTN alignment linked to annotated genes on both genomes.
+
+Column:
+
 ```text
-09_final/DL_diatom_FINAL_gene_table_for_boss_PTredo.tsv
+present_in_Thalassiosira_pseudonana
 ```
-The table contains seven columns:
+
+The lookup preserves full isoform IDs in the final table while matching comparison results by gene root:
+
+```text
+g10009.t1 → g10009
+```
+
+Run-specific yes/no counts are generated by `12_add_thalassiosira_yes_no.py` and should be added here after the comparison completes.
+
+### 18.10 Final clean isoform-level tables
+The base clean table containing the completed *Phaeodactylum* field remains:
+
+```text
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
+```
+
+After adding the *Thalassiosira* field, the combined outputs are:
+
+```text
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_PT_TP.tsv
+09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table_PT_TP_sorted_by_Average_TPM.tsv
+```
+
+Each table retains:
+
+```text
+16,947 BRAKER4 isoform rows
+one header row
+one row per predicted protein isoform
+```
+
+### 18.11 Simplified review table
+The combined review table is:
+
+```text
+09_final/DL_diatom_FINAL_gene_table_for_boss_PT_TP.tsv
+```
+
+Columns:
+
 ```text
 gene_id
 contig_id
@@ -2036,49 +2474,50 @@ diatom_gene_length_bp
 functional_annotation
 diatom_Average_TPM
 present_in_Phaeodactylum_tricornutum
+present_in_Thalassiosira_pseudonana
 ```
-The simplified table contained:
-```text
-16,947 BRAKER4 isoform rows
-7 columns
-```
-Column descriptions:
+
+Column interpretation:
+
 ```text
 gene_id
-  Original BRAKER4 isoform ID. This ID was preserved and was not collapsed to the gene root.
+  Original BRAKER4 isoform ID.
 
 contig_id
-  Diatom contig containing the BRAKER4 gene model.
+  Deer Lake diatom contig containing the BRAKER4 gene model.
 
 diatom_compartment
-  Compartment assignment based on the contig ID: nuclear, plastid_like, or mito_like.
+  Nuclear, plastid-like, or mitochondrion-like assignment based on contig identity.
 
 diatom_gene_length_bp
-  Gene length in base pairs, calculated from BRAKER4 GFF3 coordinates.
+  Gene length calculated from BRAKER4 GFF3 coordinates.
 
 functional_annotation
   Recommended annotation from the integrated Swiss-Prot, Bacillariophyta, InterProScan, and AntiFam evidence layers.
 
 diatom_Average_TPM
-  Transcriptome expression value transferred from the best TransDecoder ORF-to-BRAKER4 mapping.
+  Expression value transferred through the selected TransDecoder ORF-to-BRAKER4 mapping.
 
 present_in_Phaeodactylum_tricornutum
-  Yes/no value based on whether the diatom BRAKER4 gene root had nucleotide-level gene-linked similarity to an annotated Phaeodactylum tricornutum gene in the redo BLASTN comparison.
+  Gene-linked nucleotide-similarity yes/no field from the Phaeodactylum comparison.
+
+present_in_Thalassiosira_pseudonana
+  Gene-linked nucleotide-similarity yes/no field from the Thalassiosira comparison.
 ```
-The simplified table is intended for manual review, pathway curation, and discussion because it keeps the key biological interpretation fields without carrying forward detailed intermediate annotation or BLASTN columns.
+
+The review table is intended for manual pathway curation and biological interpretation without carrying forward detailed intermediate BLASTN or annotation fields.
 
 </details>
 
 ---
 
-<details>
-<summary><strong>18. Hi-C read mapping and contig-level proximity-ligation network</strong> - BWA-MEM, samtools, awk, YaHS, and Python</summary>
+<summary><strong>19. Hi-C read mapping and contig-level proximity-ligation network</strong> - BWA-MEM, samtools, awk, YaHS, and Python</summary>
 
 Hi-C paired-end reads were incorporated after the main assembly, annotation, expression, and comparative-genomics workflow. The goal was to assess how broadly the polished whole assembly was represented in the proximity-ligation dataset, identify contigs connected by Hi-C read pairs, and separately test high-confidence diatom-bacterial read-pair contacts.
 
 The Hi-C analysis was performed on the polished whole assembly rather than the nuclear-enriched subset because the proximity-ligation reads were generated from the complete diatom-associated consortium. This allowed diatom, bacterial, and mixed diatom-bacterial contacts to be evaluated in the same coordinate space.
 
-### 18.1 Input files and working directories
+### 19.1 Input files and working directories
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia
 
@@ -2106,7 +2545,7 @@ Diatom draft genome used for contig-type classification in the separate-read ana
 
 Contigs present in `18_diatom.fasta` were treated as diatom contigs. All remaining contigs in the polished whole assembly were treated as bacterial for the purpose of the diatom-bacterial Hi-C read-pair screen.
 
-### 18.2 Map Hi-C reads to the polished whole assembly as paired-end reads
+### 19.2 Map Hi-C reads to the polished whole assembly as paired-end reads
 The original assembly directory was not writable by the Hi-C job, so the assembly was linked into the Hi-C working directory and indexed there.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
@@ -2166,7 +2605,7 @@ All mapped alignments:      803,799 / 1,071,642 = 75.01%
 Read pairs:                 445,405
 Singletons:                 54,019 reads = 6.06%
 ```
-### 18.3 Summarize contig-level Hi-C representation
+### 19.3 Summarize contig-level Hi-C representation
 ```bash
 awk 'BEGIN {
     OFS="	";
@@ -2222,7 +2661,7 @@ Contigs with >=1 Hi-C read mapped: 4,010
 Contigs with 0 Hi-C reads mapped: 915
 Percent contigs with Hi-C reads mapped: 81.42%
 ```
-### 18.4 Exploratory whole-assembly Hi-C scaffolding with YaHS
+### 19.4 Exploratory whole-assembly Hi-C scaffolding with YaHS
 Whole-assembly Hi-C scaffolding was tested with YaHS as an exploratory step. Because the assembly represents a consortium, this result was treated cautiously and was not used as the final Hi-C integration output.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/03_yahs_scaffolding
@@ -2254,7 +2693,7 @@ YaHS output:
 maximum scaffold length: 5,424,378 bp
 ```
 The YaHS run did not increase maximum scaffold length and increased the number of sequences. Therefore, the whole-assembly YaHS output was treated as exploratory rather than as a final scaffolded assembly.
-### 18.5 Extract all-primary inter-contig Hi-C contacts
+### 19.5 Extract all-primary inter-contig Hi-C contacts
 The final contig-contact network used primary mapped Hi-C read pairs from the paired-end BWA-MEM mapping without applying a MAPQ cutoff. Unmapped reads, mate-unmapped reads, secondary alignments, and supplementary alignments were excluded. Each read pair was counted once if the two mates mapped to different contigs.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
@@ -2339,7 +2778,7 @@ length of contig_A
 length of contig_B
 ```
 Each row represents one pair of contigs connected by Hi-C proximity-ligation evidence.
-### 18.6 Summarize connected contigs
+### 19.6 Summarize connected contigs
 ```bash
 awk 'NR>1 {print $1; print $2}' \
     hic_intercontig_contacts_all_primary_pairs.tsv \
@@ -2385,7 +2824,7 @@ Final all-primary contact-network summary:
 Connected contigs: 3,770
 Inter-contig Hi-C links: 75,703
 ```
-### 18.7 Convert the all-primary contact table to network files
+### 19.7 Convert the all-primary contact table to network files
 The full contig-contact table was converted into GEXF and GraphML network files using a small helper Python script.
 The script is saved as:
 ```text
@@ -2415,7 +2854,7 @@ Edge = Hi-C proximity-ligation contact between two contigs
 Edge weight = number of Hi-C read pairs supporting the contig-to-contig connection
 ```
 
-### 18.8 High-confidence separate-read BWA mapping for diatom-bacterial contacts
+### 19.8 High-confidence separate-read BWA mapping for diatom-bacterial contacts
 A second BWA-MEM mapping was performed to keep the two Hi-C read files separate. This made it possible to ask, for each read ID, whether read 1 and read 2 mapped to different biological fractions of the whole assembly.
 
 The separate-read analysis used a stricter read-level filter than the all-primary contact network:
@@ -2469,7 +2908,7 @@ The following SLURM script maps read 1 and read 2 independently against the same
 #SBATCH --cpus-per-task=32
 #SBATCH --time=120:00:00
 #SBATCH --mem=100G
-#SBATCH --partition=cpu2023
+#SBATCH --partition=cpu2025
 ####### Run your script #########################
 
 set -euo pipefail
@@ -2533,7 +2972,7 @@ R2 primary mapped reads:  304,083
 R2 primary mapping rate:  68.27%
 ```
 
-### 18.9 Create high-confidence read-pair tables and classify mixed diatom-bacterial pairs
+### 19.9 Create high-confidence read-pair tables and classify mixed diatom-bacterial pairs
 The high-confidence separate-read tables were generated using custom Python scripts saved outside the markdown file.
 
 The script used to parse the separate BAM files, calculate percent identity from the `NM` tag and aligned CIGAR length, and retain primary MAPQ >= 30 and percent identity >= 95 alignments is saved as:
@@ -2622,7 +3061,7 @@ Each mixed Hi-C pair is represented by two rows, one for read 1 and one for read
 682 read rows
 683 lines including header
 ```
-### 18.10 Organize final Hi-C outputs
+### 19.10 Organize final Hi-C outputs
 After generating the final mapping, contact-network, and separate-read mixed-contact outputs, files were organized into final mapping and contact-map folders.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms
@@ -2680,7 +3119,7 @@ hic_bwa_separate_reads/
     ├── bwa_mem_R1.log
     └── bwa_mem_R2.log
 ```
-### 18.11 Final Hi-C analysis summary
+### 19.11 Final Hi-C analysis summary
 Hi-C reads mapped to 4,010 of 4,925 contigs in the polished whole assembly, corresponding to 81.42% of assembly contigs. At the read level, 622,967 of 890,810 primary reads mapped to the assembly, corresponding to a primary mapping rate of 69.93%.
 
 Inter-contig proximity-ligation contacts were extracted from primary mapped Hi-C read pairs without applying a MAPQ cutoff. The final all-primary contig-contact network contained 3,770 contig nodes and 75,703 inter-contig Hi-C links.
