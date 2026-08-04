@@ -68,8 +68,8 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 
 ---
 
-## Repository structure for scripts
-Custom Python and SLURM scripts are stored outside the main markdown page. The original analysis scripts remain in `scripts/`, while the *T. pseudonana* comparison is kept in a separate pipeline directory because it is submitted as a self-contained SLURM workflow.
+## Repository structure for Python scripts
+Custom Python scripts are stored in `scripts/` and are numbered according to their role in the analysis. Runnable shell and SLURM workflows are documented directly within the relevant workflow sections rather than listed as separate repository scripts.
 
 ```text
 scripts/
@@ -79,21 +79,20 @@ scripts/
 ├── 04_summarize_interproscan.py
 ├── 05_merge_functional_annotation_layers.py
 ├── 06_merge_phaeodactylum_blast_hits.py
-├── 07_add_BRAKER_lengths_clean.py
-├── 08_make_best_ORF_to_BRAKER_mapping_clean.py
-├── 09_add_ONLY_Average_TPM_clean.py
-├── 10_make_FINAL_clean_BRAKER_isoform_table.py
-├── 11_make_boss_review_gene_table_PTredo.py
-├── 12_make_hic_network_files.py
-├── 13_make_hic_primary_mapq30_pid95_tables.py
-├── 14_make_hic_pair_type_tables.py
-└── 15_make_hic_simple_mixed_read_table.py
-
-thalassiosira_pipeline/
-├── run_thalassiosira_comparison_FIXED_PY3.sh
-├── 06_merge_thalassiosira_blast_hits.py
-└── 12_add_thalassiosira_yes_no.py
+├── 07_merge_thalassiosira_blast_hits.py
+├── 08_add_BRAKER_lengths_clean.py
+├── 09_make_best_ORF_to_BRAKER_mapping_clean.py
+├── 10_add_ONLY_Average_TPM_clean.py
+├── 11_make_FINAL_clean_BRAKER_isoform_table.py
+├── 12_make_boss_review_gene_table_PTredo.py
+├── 13_add_thalassiosira_yes_no.py
+├── 14_make_hic_network_files.py
+├── 15_make_hic_primary_mapq30_pid95_tables.py
+├── 16_make_hic_pair_type_tables.py
+└── 17_make_hic_simple_mixed_read_table.py
 ```
+
+The scripts are numbered sequentially from `01` to `17` to make the workflow order easier to follow.
 
 Script purposes:
 
@@ -116,41 +115,38 @@ Script purposes:
 06_merge_phaeodactylum_blast_hits.py
   Collapses Phaeodactylum and Deer Lake gene overlaps to one row per raw BLASTN hit.
 
-07_add_BRAKER_lengths_clean.py
-  Adds BRAKER4 coordinates, contig IDs, strand, gene length, CDS length, and protein length to each isoform.
-
-08_make_best_ORF_to_BRAKER_mapping_clean.py
-  Parses TransDecoder ORF versus BRAKER4 DIAMOND output and keeps one best BRAKER4 hit per TransDecoder ORF.
-
-09_add_ONLY_Average_TPM_clean.py
-  Adds the selected TransDecoder ORF ID and Average_TPM value to BRAKER4 isoforms.
-
-10_make_FINAL_clean_BRAKER_isoform_table.py
-  Creates the final clean BRAKER4 isoform-level table with one row per predicted protein isoform.
-
-11_make_boss_review_gene_table_PTredo.py
-  Creates the simplified review table containing the core annotation, expression, compartment, and Phaeodactylum comparison fields.
-
-12_make_hic_network_files.py
-  Converts the Hi-C contig-contact table into GEXF and GraphML network files.
-
-13_make_hic_primary_mapq30_pid95_tables.py
-  Parses separate Hi-C R1 and R2 BAM files, removes non-primary alignments, and keeps MAPQ >= 30 and percent identity >= 95 alignments.
-
-14_make_hic_pair_type_tables.py
-  Joins read 1 and read 2 by read ID, assigns contig types using the diatom draft genome, and creates high-confidence Hi-C pair-type tables.
-
-15_make_hic_simple_mixed_read_table.py
-  Creates the final simplified read-level table for mixed diatom-bacterial Hi-C pairs.
-
-run_thalassiosira_comparison_FIXED_PY3.sh
-  Runs the complete Thalassiosira-to-Deer-Lake nucleotide comparison as a SLURM job.
-
-06_merge_thalassiosira_blast_hits.py
+07_merge_thalassiosira_blast_hits.py
   Collapses Thalassiosira and Deer Lake gene overlaps to one row per raw BLASTN hit.
 
-12_add_thalassiosira_yes_no.py
-  Preserves the Phaeodactylum field and adds present_in_Thalassiosira_pseudonana to the final isoform and review tables.
+08_add_BRAKER_lengths_clean.py
+  Adds BRAKER4 coordinates, contig IDs, strand, gene length, CDS length, and protein length to each isoform.
+
+09_make_best_ORF_to_BRAKER_mapping_clean.py
+  Parses TransDecoder ORF versus BRAKER4 DIAMOND output and keeps one best BRAKER4 hit per TransDecoder ORF.
+
+10_add_ONLY_Average_TPM_clean.py
+  Adds the selected TransDecoder ORF ID and Average_TPM value to BRAKER4 isoforms.
+
+11_make_FINAL_clean_BRAKER_isoform_table.py
+  Creates the final clean BRAKER4 isoform-level table with one row per predicted protein isoform.
+
+12_make_boss_review_gene_table_PTredo.py
+  Creates the simplified review table containing the core annotation, expression, compartment, and Phaeodactylum comparison fields.
+
+13_add_thalassiosira_yes_no.py
+  Preserves the Phaeodactylum comparison field and adds present_in_Thalassiosira_pseudonana to the final isoform and review tables.
+
+14_make_hic_network_files.py
+  Converts the Hi-C contig-contact table into GEXF and GraphML network files.
+
+15_make_hic_primary_mapq30_pid95_tables.py
+  Parses separate Hi-C R1 and R2 BAM files, removes non-primary alignments, and keeps MAPQ >= 30 and percent identity >= 95 alignments.
+
+16_make_hic_pair_type_tables.py
+  Joins read 1 and read 2 by read ID, assigns contig types using the diatom draft genome, and creates high-confidence Hi-C pair-type tables.
+
+17_make_hic_simple_mixed_read_table.py
+  Creates the final simplified read-level table for mixed diatom-bacterial Hi-C pairs.
 ```
 
 ### Comparative-genomics Conda environment
@@ -1894,15 +1890,13 @@ This analysis provides a gene-linked nucleotide similarity table between the dia
 ---
 
 <details>
+<summary><strong>17. Pairwise genome comparison with <em>Thalassiosira pseudonana</em></strong> - BLASTN, GFF3, bedtools, Python, and SLURM</summary>
 
-<details>
-<summary><strong>17. Pairwise genome comparison with <em>Thalassiosira pseudonana</em></strong> - SLURM, BLASTN, GFF3, bedtools, and Python</summary>
+A second whole-genome nucleotide comparison was performed using *Thalassiosira pseudonana* CCMP1335. The analysis follows the same logic as the *Phaeodactylum tricornutum* comparison: the complete reference genome is used as the BLASTN query, the Deer Lake diatom genome is used as the nucleotide database, all reported alignments are retained, and overlapping gene models are assigned on both genomes.
 
-A second whole-genome nucleotide comparison was performed using *Thalassiosira pseudonana* CCMP1335. The analysis mirrors the *Phaeodactylum tricornutum* workflow: the complete reference genome is used as the BLASTN query, the Deer Lake diatom genome is used as the nucleotide database, every reported alignment is retained, and gene models overlapping the aligned intervals are assigned on both genomes.
+This analysis is a nucleotide-level gene-linked similarity screen. It is not a reciprocal-best-hit analysis and should not be interpreted as confirmed orthology.
 
-This comparison is a nucleotide-level gene-linked similarity screen. It is not a reciprocal-best-hit analysis and should not be interpreted as confirmed orthology.
-
-### 17.1 Reference assembly and directory structure
+### 17.1 Reference assembly and working directories
 The NCBI RefSeq assembly used for *T. pseudonana* was:
 
 ```text
@@ -1912,28 +1906,13 @@ RefSeq accession:    GCF_000149405.2
 Assembly name:       ASM14940v2
 ```
 
-The comparison working directory was:
+The main analysis directory was:
 
 ```text
 /work/ebg_lab/eb/diatom_consortia/thalassiosira_to_diatom_blastn_redo
 ```
 
-The SLURM and companion Python scripts were stored in:
-
-```text
-/work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline
-```
-
-The pipeline directory contains:
-
-```text
-run_thalassiosira_comparison_FIXED_PY3.sh
-06_merge_thalassiosira_blast_hits.py
-12_add_thalassiosira_yes_no.py
-```
-
-### 17.2 Store the reference genome in the home directory
-To reduce project-directory storage, the *T. pseudonana* genome and GFF3 are streamed directly into the home directory:
+To reduce project-directory storage, the downloaded reference genome and GFF3 were stored under the home directory:
 
 ```text
 $HOME/databases/thalassiosira_pseudonana/GCF_000149405.2_ASM14940v2/
@@ -1946,26 +1925,37 @@ Thalassiosira_pseudonana_ASM14940v2_GCF_000149405.2_genomic.fna
 thalassiosira_ASM14940v2.gff3
 ```
 
-Only symbolic links are created under the project analysis directory:
+Only symbolic links to these files were created in the project analysis directory. The two Python helper scripts used by this section were:
 
 ```text
-00_inputs/thalassiosira_genome.fna
-00_inputs/thalassiosira_ASM14940v2.gff3
+scripts/07_merge_thalassiosira_blast_hits.py
+scripts/13_add_thalassiosira_yes_no.py
 ```
 
-The download is streamed through `gzip -dc`, so compressed and uncompressed copies are not stored simultaneously:
+On ARC, `07_merge_thalassiosira_blast_hits.py` was placed at:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline/07_merge_thalassiosira_blast_hits.py
+```
+
+### 17.2 Comparative-genomics environment
+The comparison was run in the `diatom_blast` Conda environment. The environment requires BLAST+, bedtools, seqkit, wget, Python 3, and pandas.
 
 ```bash
-wget -qO- "${REF_FTP}/${REF_PREFIX}_genomic.fna.gz" \
-    | gzip -dc > "${REF_GENOME}.tmp"
-
-mv "${REF_GENOME}.tmp" "${REF_GENOME}"
+conda activate diatom_blast
+conda install -c conda-forge pandas
 ```
 
-The matching GFF3 is downloaded using the same approach.
+The Python interpreter and pandas installation should be checked before submission:
 
-### 17.3 SLURM resource request
-The comparison script begins with the standard ARC resource request:
+```bash
+which python3
+python3 --version
+python3 -c "import pandas; print(pandas.__version__)"
+```
+
+### 17.3 Complete SLURM workflow
+The following block is the complete SLURM workflow used for the comparison. It can be saved on ARC as `run_thalassiosira_comparison_FIXED_PY3.sh`. The shell workflow is documented here directly rather than maintained as a separate script entry in the repository structure.
 
 ```bash
 #!/bin/bash
@@ -1977,67 +1967,89 @@ The comparison script begins with the standard ARC resource request:
 #SBATCH --mem=100G
 #SBATCH --partition=cpu2025
 ####### Run your script #########################
-```
+set -euo pipefail
 
-The script explicitly sources Conda and activates the comparative-genomics environment:
-
-```bash
 source ~/miniforge3/etc/profile.d/conda.sh
 conda activate diatom_blast
-```
 
-The companion merge script is referenced by its absolute path so that SLURM does not search for it under `/var/spool/slurmd/`:
+THREADS=${SLURM_CPUS_PER_TASK:-32}
 
-```bash
+# Whole-genome nucleotide comparison:
+# Thalassiosira pseudonana CCMP1335 -> Deer Lake diatom genome
+# Mirrors the existing Phaeodactylum tricornutum dc-megablast workflow.
+
+BASE=/work/ebg_lab/eb/diatom_consortia
+WORKDIR=${BASE}/thalassiosira_to_diatom_blastn_redo
+DIATOM_GENOME=${BASE}/metatranscriptomics/genome_index/18_diatom.fasta
+DIATOM_GFF=${BASE}/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.gff3
+
+REF_ACCESSION=GCF_000149405.2
+REF_ASSEMBLY=ASM14940v2
+REF_PREFIX=${REF_ACCESSION}_${REF_ASSEMBLY}
+REF_FTP=https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/149/405/${REF_PREFIX}
+
+# Store the downloaded Thalassiosira reference under the home directory
+# rather than in the project analysis directory.
+REF_HOME=${HOME}/databases/thalassiosira_pseudonana/${REF_PREFIX}
+REF_GENOME=${REF_HOME}/Thalassiosira_pseudonana_${REF_ASSEMBLY}_${REF_ACCESSION}_genomic.fna
+REF_GFF=${REF_HOME}/thalassiosira_${REF_ASSEMBLY}.gff3
+
+# Use an explicit absolute path for the companion Python script.
+# This avoids SLURM resolving the script location under /var/spool/slurmd/.
 PIPELINE_DIR=/work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline
-MERGE_SCRIPT=${PIPELINE_DIR}/06_merge_thalassiosira_blast_hits.py
-```
+MERGE_SCRIPT=${PIPELINE_DIR}/07_merge_thalassiosira_blast_hits.py
 
-### 17.4 Submit the comparison
-Submit the job from the pipeline directory:
+echo "Pipeline directory: ${PIPELINE_DIR}"
+echo "Merge script: ${MERGE_SCRIPT}"
 
-```bash
-cd /work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline
+for program in wget gzip seqkit makeblastdb blastn bedtools python3; do
+    command -v "${program}" >/dev/null 2>&1 || {
+        echo "ERROR: Required program not found in PATH: ${program}" >&2
+        exit 1
+    }
+done
 
-sbatch run_thalassiosira_comparison_FIXED_PY3.sh
-```
+[[ -s "${DIATOM_GENOME}" ]] || { echo "ERROR: Missing ${DIATOM_GENOME}" >&2; exit 1; }
+[[ -s "${DIATOM_GFF}" ]] || { echo "ERROR: Missing ${DIATOM_GFF}" >&2; exit 1; }
+[[ -s "${MERGE_SCRIPT}" ]] || { echo "ERROR: Missing ${MERGE_SCRIPT}" >&2; exit 1; }
 
-The Python merge script must exist at:
+mkdir -p "${WORKDIR}"/{00_inputs,01_db,02_blast,03_filtered,04_summary,logs,scripts}
+mkdir -p "${REF_HOME}"
+cd "${WORKDIR}"
 
-```text
-/work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline/06_merge_thalassiosira_blast_hits.py
-```
+ln -sfn "${DIATOM_GENOME}" 00_inputs/diatom_genome.fasta
+cp -f "${MERGE_SCRIPT}" scripts/07_merge_thalassiosira_blast_hits.py
 
-Check the required files before submission:
+# Stream and decompress directly into the home-directory reference folder.
+# This avoids storing both .gz and uncompressed copies at the same time.
+if [[ ! -s "${REF_GENOME}" ]]; then
+    echo "Downloading Thalassiosira genome to ${REF_GENOME}"
+    wget -qO- "${REF_FTP}/${REF_PREFIX}_genomic.fna.gz" \
+        | gzip -dc > "${REF_GENOME}.tmp"
+    mv "${REF_GENOME}.tmp" "${REF_GENOME}"
+fi
 
-```bash
-ls -lh \
-    run_thalassiosira_comparison_FIXED_PY3.sh \
-    06_merge_thalassiosira_blast_hits.py
-```
+if [[ ! -s "${REF_GFF}" ]]; then
+    echo "Downloading Thalassiosira GFF3 to ${REF_GFF}"
+    wget -qO- "${REF_FTP}/${REF_PREFIX}_genomic.gff.gz" \
+        | gzip -dc > "${REF_GFF}.tmp"
+    mv "${REF_GFF}.tmp" "${REF_GFF}"
+fi
 
-### 17.5 Build the Deer Lake nucleotide database
-The same Deer Lake genome used for the *Phaeodactylum* comparison is linked into the new working directory:
+# Keep only lightweight symbolic links inside the project analysis directory.
+ln -sfn "${REF_GENOME}" 00_inputs/thalassiosira_genome.fna
+ln -sfn "${REF_GFF}" 00_inputs/thalassiosira_${REF_ASSEMBLY}.gff3
 
-```text
-/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/genome_index/18_diatom.fasta
-```
+seqkit stats 00_inputs/diatom_genome.fasta 00_inputs/thalassiosira_genome.fna \
+    | tee 04_summary/genome_input_stats.txt
 
-The BLAST database is built with:
-
-```bash
 makeblastdb \
     -in 00_inputs/diatom_genome.fasta \
     -dbtype nucl \
     -parse_seqids \
     -out 01_db/diatom_genome_blastdb \
     -title "DL_diatom_genome"
-```
 
-### 17.6 Run *Thalassiosira* versus Deer Lake BLASTN
-The reference genome is used as the query and the Deer Lake assembly is used as the database:
-
-```bash
 blastn \
     -task dc-megablast \
     -query 00_inputs/thalassiosira_genome.fna \
@@ -2045,38 +2057,146 @@ blastn \
     -out 02_blast/thalassiosira_vs_diatom_dcmegablast.tsv \
     -evalue 1e-10 \
     -perc_identity 60 \
-    -num_threads "${SLURM_CPUS_PER_TASK:-32}" \
+    -num_threads "${THREADS}" \
     -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen qcovs"
+
+printf "thal_contig\tdiatom_contig\tpident\taln_len\tmismatch\tgapopen\tthal_start\tthal_end\tdiatom_start\tdiatom_end\tevalue\tbitscore\tthal_len\tdiatom_len\tqcovs\n" \
+    > 02_blast/thalassiosira_vs_diatom_dcmegablast.header.tsv
+cat 02_blast/thalassiosira_vs_diatom_dcmegablast.tsv \
+    >> 02_blast/thalassiosira_vs_diatom_dcmegablast.header.tsv
+
+# NCBI Thalassiosira gene models -> BED.
+awk -F'\t' '
+BEGIN{OFS="\t"}
+$3=="gene"{
+  id=name=gene=locus="NA"
+  n=split($9,a,";")
+  for(i=1;i<=n;i++){
+    split(a[i],b,"=")
+    if(b[1]=="ID") id=b[2]
+    else if(b[1]=="Name") name=b[2]
+    else if(b[1]=="gene") gene=b[2]
+    else if(b[1]=="locus_tag") locus=b[2]
+  }
+  gsub(/^gene-/,"",id)
+  print $1, $4-1, $5, id, name, gene, locus, $7
+}' 00_inputs/thalassiosira_${REF_ASSEMBLY}.gff3 \
+> 00_inputs/thalassiosira_genes.bed
+
+# Deer Lake BRAKER4 gene models -> BED.
+awk -F'\t' '
+BEGIN{OFS="\t"}
+$3=="gene"{
+  id=gene_id="NA"
+  n=split($9,a,";")
+  for(i=1;i<=n;i++){
+    split(a[i],b,"=")
+    if(b[1]=="ID") id=b[2]
+    else if(b[1]=="gene_id") gene_id=b[2]
+  }
+  if(gene_id=="NA") gene_id=id
+  print $1, $4-1, $5, gene_id, id, $7
+}' "${DIATOM_GFF}" \
+> 00_inputs/diatom_BRAKER_ET_genes.bed
+
+# Convert each raw BLASTN alignment to BED-like intervals on both genomes.
+rm -f 02_blast/thalassiosira_blast_intervals.bed 02_blast/diatom_blast_intervals.bed
+awk -F'\t' '
+BEGIN{OFS="\t"}
+{
+  hit=sprintf("hit_%06d", NR)
+
+  qstart=$7; qend=$8
+  if(qstart <= qend){qbstart=qstart-1; qbend=qend; qstrand="+"}
+  else{qbstart=qend-1; qbend=qstart; qstrand="-"}
+
+  sstart=$9; send=$10
+  if(sstart <= send){sbstart=sstart-1; sbend=send; sstrand="+"}
+  else{sbstart=send-1; sbend=sstart; sstrand="-"}
+
+  print $1, qbstart, qbend, hit, $3, $4, $11, $12, $13, $2, $9, $10, qstrand > "02_blast/thalassiosira_blast_intervals.bed"
+  print $2, sbstart, sbend, hit, $3, $4, $11, $12, $14, $1, $7, $8, sstrand > "02_blast/diatom_blast_intervals.bed"
+}' 02_blast/thalassiosira_vs_diatom_dcmegablast.tsv
+
+bedtools intersect \
+    -a 02_blast/thalassiosira_blast_intervals.bed \
+    -b 00_inputs/thalassiosira_genes.bed \
+    -wa -wb -loj \
+> 03_filtered/thalassiosira_hits_with_Thalassiosira_genes.tsv
+
+bedtools intersect \
+    -a 02_blast/diatom_blast_intervals.bed \
+    -b 00_inputs/diatom_BRAKER_ET_genes.bed \
+    -wa -wb -loj \
+> 03_filtered/diatom_hits_with_BRAKER_ET_genes.tsv
+
+echo "Python executable: $(command -v python3)"
+python3 --version
+python3 scripts/07_merge_thalassiosira_blast_hits.py
+
+{
+    echo -e "raw_blast_hits\t$(wc -l < 02_blast/thalassiosira_vs_diatom_dcmegablast.tsv)"
+    echo -e "Thalassiosira_genes\t$(wc -l < 00_inputs/thalassiosira_genes.bed)"
+    echo -e "diatom_BRAKER_ET_genes\t$(wc -l < 00_inputs/diatom_BRAKER_ET_genes.bed)"
+    echo -e "Thalassiosira_overlap_rows\t$(wc -l < 03_filtered/thalassiosira_hits_with_Thalassiosira_genes.tsv)"
+    echo -e "diatom_overlap_rows\t$(wc -l < 03_filtered/diatom_hits_with_BRAKER_ET_genes.tsv)"
+} | tee 04_summary/file_counts.tsv
+
+echo "Completed Thalassiosira pseudonana comparison."
+echo "Final table: ${WORKDIR}/04_summary/thalassiosira_vs_diatom_BLASTN_with_Thalassiosira_and_BRAKER_ET_genes.tsv"
 ```
 
-These parameters are identical to the *P. tricornutum* comparison. No additional alignment-length, query-coverage, bitscore, or post-BLAST identity filter is applied.
-
-### 17.7 Convert gene models and BLASTN hits to BED
-The NCBI *T. pseudonana* GFF3 is converted to a BED table containing:
+The workflow performs the following operations:
 
 ```text
-contig
-gene start
-gene end
-gene ID
-gene name
-gene symbol
-locus tag
-strand
+activates the diatom_blast Conda environment
+stores the Thalassiosira reference genome and GFF3 in the home directory
+creates symbolic links to the reference files in the project directory
+builds a Deer Lake nucleotide BLAST database
+runs dc-megablast with an e-value threshold of 1e-10 and minimum identity of 60%
+retains all reported BLASTN alignments without additional post-BLAST filtering
+converts reference and Deer Lake gene models to BED format
+assigns overlapping genes with bedtools intersect -loj
+collapses overlap results to one row per raw BLASTN hit
+writes the final gene-linked table and summary files
 ```
 
-The accepted Deer Lake BRAKER4 ET GFF3 is converted to a separate BED table containing:
+### 17.4 Submit the SLURM job
+The SLURM file and `07_merge_thalassiosira_blast_hits.py` were placed in the same ARC directory:
 
 ```text
-contig
-gene start
-gene end
-BRAKER4 gene ID
-GFF3 attribute ID
-strand
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline/
 ```
 
-Each raw BLASTN alignment is assigned a stable ID:
+The job was submitted with:
+
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline
+
+ls -lh \
+    run_thalassiosira_comparison_FIXED_PY3.sh \
+    07_merge_thalassiosira_blast_hits.py
+
+sbatch run_thalassiosira_comparison_FIXED_PY3.sh
+```
+
+### 17.5 BLASTN comparison settings
+The complete *T. pseudonana* genome was used as the query and the Deer Lake assembly was used as the database. The BLASTN settings were identical to the *P. tricornutum* comparison:
+
+```text
+BLAST task:             dc-megablast
+E-value threshold:      1e-10
+Minimum identity:       60%
+Additional filtering:   none
+Threads:                32
+```
+
+No minimum alignment-length, query-coverage, bitscore, or additional identity filter was applied after BLASTN.
+
+### 17.6 Gene-overlap assignment
+The NCBI *T. pseudonana* GFF3 was converted to a BED table containing reference gene identifiers, names, symbols, locus tags, coordinates, and strand. The Deer Lake BRAKER4 ET GFF3 was converted to a separate BED table containing BRAKER4 gene identifiers, coordinates, and strand.
+
+Each raw BLASTN alignment received a stable identifier:
 
 ```text
 hit_000001
@@ -2085,61 +2205,32 @@ hit_000003
 ...
 ```
 
-The query and subject coordinates are converted to BED-compatible intervals while preserving alignment orientation.
+Reference and Deer Lake gene overlaps were assigned using `bedtools intersect -loj`. The `-loj` option retained BLASTN alignments even when no annotated gene overlapped the aligned interval.
 
-### 17.8 Assign overlapping genes
-Reference-gene overlaps are identified with:
-
-```bash
-bedtools intersect \
-    -a 02_blast/thalassiosira_blast_intervals.bed \
-    -b 00_inputs/thalassiosira_genes.bed \
-    -wa -wb -loj \
-    > 03_filtered/thalassiosira_hits_with_Thalassiosira_genes.tsv
-```
-
-Deer Lake BRAKER4 gene overlaps are identified with:
-
-```bash
-bedtools intersect \
-    -a 02_blast/diatom_blast_intervals.bed \
-    -b 00_inputs/diatom_BRAKER_ET_genes.bed \
-    -wa -wb -loj \
-    > 03_filtered/diatom_hits_with_BRAKER_ET_genes.tsv
-```
-
-The `-loj` option retains BLASTN alignments even when no annotated gene overlaps the interval.
-
-### 17.9 Collapse to one row per raw BLASTN hit
-The overlap tables are merged with:
-
-```bash
-python3 scripts/06_merge_thalassiosira_blast_hits.py
-```
-
-The script:
+The Python merge script then:
 
 ```text
-retains one output row per raw BLASTN hit
-collapses multiple overlapping genes with semicolons
-keeps alignments without annotated-gene overlaps
-writes gene-linked counts to a summary file
-does not perform additional BLASTN filtering
+retained one output row per raw BLASTN hit
+collapsed multiple overlapping genes with semicolons
+kept alignments without annotated-gene overlaps
+wrote gene-linked counts to a summary file
+did not perform additional BLASTN filtering
 ```
 
+### 17.7 Main comparison outputs
 Final gene-linked output:
 
 ```text
-04_summary/thalassiosira_vs_diatom_BLASTN_with_Thalassiosira_and_BRAKER_ET_genes.tsv
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_to_diatom_blastn_redo/04_summary/thalassiosira_vs_diatom_BLASTN_with_Thalassiosira_and_BRAKER_ET_genes.tsv
 ```
 
 Summary output:
 
 ```text
-04_summary/thalassiosira_vs_diatom_BLASTN_summary.txt
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_to_diatom_blastn_redo/04_summary/thalassiosira_vs_diatom_BLASTN_summary.txt
 ```
 
-Main final-table columns:
+Main columns in the gene-linked table:
 
 ```text
 blast_hit_id
@@ -2168,23 +2259,18 @@ diatom_gene_attr_id
 diatom_gene_strand
 ```
 
-Run-specific hit and gene counts are written by the pipeline and should be added to this page only after the SLURM job completes.
+Run-specific hit and gene counts should be added after the SLURM job completes.
 
-### 17.10 Add the *Thalassiosira* yes/no field
-The final gene-linked BLASTN table is used as a yes/no lookup. A Deer Lake BRAKER4 gene is marked `yes` only when the same raw BLASTN hit overlaps both:
+### 17.8 Add the *Thalassiosira* yes/no field
+The final gene-linked BLASTN table is used as a gene-root yes/no lookup. A Deer Lake BRAKER4 gene is marked `yes` only when the same raw BLASTN hit overlaps both an annotated *T. pseudonana* gene and a Deer Lake BRAKER4 ET gene model.
 
-```text
-an annotated Thalassiosira pseudonana gene
-a Deer Lake BRAKER4 ET gene model
-```
-
-The lookup is performed using the BRAKER4 gene root. For example:
+BRAKER4 isoform IDs are reduced to their gene root during lookup:
 
 ```text
 g10009.t1 → g10009
 ```
 
-The existing *Phaeodactylum* field is preserved and a new column is added:
+The existing *Phaeodactylum* field is retained and a separate column is added:
 
 ```text
 present_in_Thalassiosira_pseudonana
@@ -2197,7 +2283,7 @@ cd /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_
 
 conda activate diatom_blast
 
-python /work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline/12_add_thalassiosira_yes_no.py \
+python /work/ebg_lab/eb/diatom_consortia/thalassiosira_pipeline/13_add_thalassiosira_yes_no.py \
     --input-final 09_final/DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
 ```
 
@@ -2209,7 +2295,7 @@ Default outputs:
 09_final/DL_diatom_FINAL_gene_table_for_boss_PT_TP.tsv
 ```
 
-The two final comparison columns are:
+The final comparison columns are:
 
 ```text
 present_in_Phaeodactylum_tricornutum
@@ -2219,7 +2305,6 @@ present_in_Thalassiosira_pseudonana
 </details>
 
 ---
-
 
 <details>
 <summary><strong>18. Clean BRAKER4 isoform-level gene table construction</strong> - functional annotation, Average_TPM, and reference-diatom comparison fields</summary>
@@ -2433,7 +2518,7 @@ The lookup preserves full isoform IDs in the final table while matching comparis
 g10009.t1 → g10009
 ```
 
-Run-specific yes/no counts are generated by `12_add_thalassiosira_yes_no.py` and should be added here after the comparison completes.
+Run-specific yes/no counts are generated by `13_add_thalassiosira_yes_no.py` and should be added here after the comparison completes.
 
 ### 18.10 Final clean isoform-level tables
 The base clean table containing the completed *Phaeodactylum* field remains:
@@ -2511,6 +2596,7 @@ The review table is intended for manual pathway curation and biological interpre
 
 ---
 
+<details>
 <summary><strong>19. Hi-C read mapping and contig-level proximity-ligation network</strong> - BWA-MEM, samtools, awk, YaHS, and Python</summary>
 
 Hi-C paired-end reads were incorporated after the main assembly, annotation, expression, and comparative-genomics workflow. The goal was to assess how broadly the polished whole assembly was represented in the proximity-ligation dataset, identify contigs connected by Hi-C read pairs, and separately test high-confidence diatom-bacterial read-pair contacts.
@@ -2828,12 +2914,12 @@ Inter-contig Hi-C links: 75,703
 The full contig-contact table was converted into GEXF and GraphML network files using a small helper Python script.
 The script is saved as:
 ```text
-scripts/12_make_hic_network_files.py
+scripts/14_make_hic_network_files.py
 ```
 Run the script with:
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
-python scripts/12_make_hic_network_files.py
+python scripts/14_make_hic_network_files.py
 ```
 This script reads the Hi-C inter-contig contact table and exports the contact network in GEXF and GraphML formats.
 
@@ -2977,13 +3063,13 @@ The high-confidence separate-read tables were generated using custom Python scri
 
 The script used to parse the separate BAM files, calculate percent identity from the `NM` tag and aligned CIGAR length, and retain primary MAPQ >= 30 and percent identity >= 95 alignments is saved as:
 ```text
-scripts/13_make_hic_primary_mapq30_pid95_tables.py
+scripts/15_make_hic_primary_mapq30_pid95_tables.py
 ```
 Run the script with:
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
 conda activate hic_diatom
-python scripts/13_make_hic_primary_mapq30_pid95_tables.py
+python scripts/15_make_hic_primary_mapq30_pid95_tables.py
 ```
 This script generated:
 ```text
@@ -2993,13 +3079,13 @@ This script generated:
 
 The script used to join read 1 and read 2 by read ID, classify contigs as diatom or bacterial, assign pair-type codes, and write full read-pair tables is saved as:
 ```text
-scripts/14_make_hic_pair_type_tables.py
+scripts/16_make_hic_pair_type_tables.py
 ```
 Run the script with:
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
 conda activate hic_diatom
-python scripts/14_make_hic_pair_type_tables.py
+python scripts/16_make_hic_pair_type_tables.py
 ```
 This script used:
 ```text
@@ -3030,13 +3116,13 @@ The total number of high-confidence mixed diatom-bacterial Hi-C read pairs was:
 
 The final simplified mixed-pair table was generated using:
 ```text
-scripts/15_make_hic_simple_mixed_read_table.py
+scripts/17_make_hic_simple_mixed_read_table.py
 ```
 Run the script with:
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads
 conda activate hic_diatom
-python scripts/15_make_hic_simple_mixed_read_table.py
+python scripts/17_make_hic_simple_mixed_read_table.py
 ```
 The final simple table is:
 ```text
@@ -3094,7 +3180,7 @@ Final all-primary contact-network files:
 │   ├── hic_contig_network_all_primary_pairs.gexf
 │   └── hic_contig_network_all_primary_pairs.graphml
 └── scripts/
-    └── 12_make_hic_network_files.py
+    └── 14_make_hic_network_files.py
 ```
 Final high-confidence separate-read mixed-contact files:
 ```text
