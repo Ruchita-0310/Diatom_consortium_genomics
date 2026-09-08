@@ -1,5 +1,5 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, nucleotide-level comparisons with the reference diatoms *Phaeodactylum tricornutum* and *Thalassiosira pseudonana*, and Hi-C read mapping and contact-network analysis.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, marker-based phylogenetic analyses using 18S rRNA, plastid 16S rRNA, and rbcL, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, nucleotide-level comparisons with the reference diatoms *Phaeodactylum tricornutum* and *Thalassiosira pseudonana*, and Hi-C read mapping and contact-network analysis.
 
 The final gene table retains one row per BRAKER4 predicted protein isoform and includes separate gene-linked nucleotide-similarity fields for *P. tricornutum* and *T. pseudonana*. These fields are screening results and are not interpreted as confirmed orthology.
 
@@ -22,6 +22,8 @@ MetaBAT2 binning
 CheckM2 + GTDB-Tk + MetaEuk contig classification
    ↓
 Organelle identification using reference chloroplast and mitochondrial genomes
+   ↓
+Phylogenetic analyses using 18S rRNA, plastid 16S rRNA, and rbcL
    ↓
 BRAKER4 ET gene annotation using RNA-seq evidence
    ↓
@@ -57,8 +59,8 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Assembly quality                 | BUSCO, QUAST/MetaQUAST                                                                                                                  |
 | Binning and bin quality          | MetaBAT2, CheckM2                                                                                                                       |
 | Taxonomy and abundance           | GTDB-Tk, MetaEuk, CoverM                                                                                                                |
-| Organelle identification         | MetaQUAST, minimap2, bedtools, seqkit, GeSeq/OGDRAW                                                                                     |
-| Phylogenetics                    | Clustal Omega, TrimAl, IQ-TREE 2                                                                                                        |
+| Organelle identification         | MetaQUAST, minimap2, bedtools, seqkit                                                                                                   |
+| Phylogenetics                    | Barrnap, BLAST+, bedtools, seqkit, Clustal Omega, TrimAl, IQ-TREE 2, Python                                                            |
 | Transcriptomics                  | Nextflow, nf-core/metatdenovo, TransDecoder, Barrnap, STAR                                                                              |
 | Genome annotation                | BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, STAR, BUSCO/compleasm                                                                           |
 | Functional annotation            | DIAMOND, UniProtKB/Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, Pfam, PANTHER, Gene3D, CDD, SMART, SUPERFAMILY, ProSite, Python |
@@ -462,11 +464,18 @@ bac_output_coverm.tsv
 ---
 
 <details>
-<summary><strong>9. 18S rRNA phylogenetic analysis</strong> - Clustal Omega, TrimAl, and IQ-TREE 2</summary>
-A phylogenetic tree was generated from 18S rRNA sequences using Clustal Omega, TrimAl, and IQ-TREE 2.
+<summary><strong>9. Phylogenetic analyses</strong> - 18S rRNA, plastid 16S rRNA, and rbcL</summary>
+
+Three marker-based phylogenetic analyses were used to evaluate the placement of the Deer Lake diatom. The 18S rRNA sequence was recovered from the metatranscriptomic assembly, whereas plastid 16S rRNA and rbcL were obtained from the reconstructed chloroplast contig. All three trees were aligned with Clustal Omega, trimmed with TrimAl, and inferred with IQ-TREE 2 using ModelFinder, 1,000 ultrafast bootstrap replicates, and 1,000 SH-aLRT replicates.
+
+### 9.1 18S rRNA phylogeny
+
+The 18S rRNA phylogeny was generated from the Deer Lake 18S sequence and selected diatom reference sequences.
+
 ```bash
 cat *.fasta > 18S_new.fasta
 ```
+
 This command combines individual 18S FASTA files into one input file for alignment.
 
 ```bash
@@ -474,14 +483,18 @@ clustalo \
     -i 18S_new.fasta \
     -o 18S_aligned.fasta
 ```
-This command aligns the combined 18S rRNA sequences.
+
+The alignment was trimmed with TrimAl:
+
 ```bash
 trimal \
     -in 18S_aligned.fasta \
     -out 18S_trimmed.fasta \
     -automated1
 ```
-This command trims poorly aligned regions from the 18S alignment.
+
+The maximum-likelihood tree was inferred with IQ-TREE 2:
+
 ```bash
 /home/ruchita.solanki/iqtree-2.2.2.7-Linux/bin/iqtree2 \
     -s 18S_trimmed.fasta \
@@ -490,7 +503,308 @@ This command trims poorly aligned regions from the 18S alignment.
     -alrt 1000 \
     -nt AUTO
 ```
-This command infers a phylogenetic tree, selects the best-fit model using ModelFinder, and estimates branch support using ultrafast bootstrap and SH-aLRT values.
+
+ModelFinder selected the best-fit nucleotide substitution model, and branch support was estimated using ultrafast bootstrap and SH-aLRT values.
+
+---
+
+### 9.2 Plastid 16S rRNA phylogeny
+
+The plastid 16S rRNA sequence was identified from the reconstructed Deer Lake chloroplast contig:
+
+```text
+chloroplast_contig_1443_trimmed.fasta
+```
+
+The chloroplast sequence was 120,429 bp. Barrnap identified two complete 16S rRNA copies on the plastid contig:
+
+```text
+copy 1: contig_1443  46638-48119    strand -
+copy 2: contig_1443 114897-116378   strand +
+```
+
+Both copies were 1,482 bp and were identical. The two loci were extracted with bedtools:
+
+```bash
+printf "contig_1443\t46637\t48119\tchloroplast_16S_copy1\t.\t-\ncontig_1443\t114896\t116378\tchloroplast_16S_copy2\t.\t+\n" \
+    > chloroplast_16S.bed
+
+bedtools getfasta \
+    -fi chloroplast_contig_1443_trimmed.fasta \
+    -bed chloroplast_16S.bed \
+    -s \
+    -name \
+    > DeerLake_chloroplast_16S_copies.fasta
+```
+
+Because the two plastid copies were identical, one copy was retained for phylogenetic analysis:
+
+```bash
+seqkit grep \
+    -r \
+    -p 'chloroplast_16S_copy2' \
+    DeerLake_chloroplast_16S_copies.fasta \
+    | sed 's/^>.*/>Deer_Lake_diatom_16S/' \
+    > DeerLake_diatom_16S.fasta
+```
+
+Reference plastid 16S sequences were selected from NCBI searches. Records labelled as uncultured were excluded, and duplicate inverted-repeat copies from the same plastid accession were collapsed to one representative sequence. The curated reference dataset contained 27 sequences. Addition of the Deer Lake plastid 16S sequence produced a 28-sequence dataset.
+
+```bash
+cat DeerLake_diatom_16S.fasta \
+    16S_references_large.fasta \
+    > all_16S_large.fasta
+```
+
+The sequences were aligned with Clustal Omega:
+
+```bash
+clustalo \
+    -i all_16S_large.fasta \
+    -o all_16S_large_aligned.fasta \
+    --threads=32 \
+    --force
+```
+
+The alignment was trimmed with TrimAl:
+
+```bash
+trimal \
+    -in all_16S_large_aligned.fasta \
+    -out all_16S_large_aligned_trimmed.fasta \
+    -automated1
+```
+
+The final trimmed plastid 16S alignment contained:
+
+```text
+Sequences:          28
+Alignment length:   1,475 bp
+```
+
+The maximum-likelihood tree was inferred with IQ-TREE 2:
+
+```bash
+/home/ruchita.solanki/iqtree-2.2.2.7-Linux/bin/iqtree2 \
+    -s all_16S_large_aligned_trimmed.fasta \
+    -m MFP \
+    -bb 1000 \
+    -alrt 1000 \
+    -nt 32 \
+    -pre DeerLake_16S_large \
+    -redo
+```
+
+The main output tree is:
+
+```text
+DeerLake_16S_large.treefile
+```
+
+---
+
+### 9.3 Plastid rbcL phylogeny
+
+The rbcL locus from `contig_1443` was used to identify related diatom rbcL sequences in NCBI. Matching rbcL sequences were downloaded as a FASTA file for phylogenetic analysis.
+
+The initial NCBI download contained:
+
+```text
+100 rbcL reference sequences
+```
+
+All sequences assigned to *Durinskia* were removed before tree construction. Exact nucleotide duplicates were then screened so that only literal duplicate sequences would be removed; different strains or accessions from the same species were retained when their rbcL sequences differed.
+
+The curation step produced:
+
+```text
+Starting references:              100
+After removing Durinskia:          87
+After exact-sequence filtering:    87
+```
+
+The following Python workflow was used:
+
+```python
+INPUT = "seqdump.txt"
+OUTPUT = "rbcL_no_Durinskia_deduplicated.fasta"
+
+def read_fasta(path):
+    records = []
+    header = None
+    seq = []
+
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+
+            if not line:
+                continue
+
+            if line.startswith(">"):
+                if header is not None:
+                    records.append((header, "".join(seq)))
+
+                header = line[1:]
+                seq = []
+
+            else:
+                seq.append(line)
+
+    if header is not None:
+        records.append((header, "".join(seq)))
+
+    return records
+
+
+records = read_fasta(INPUT)
+
+no_durinskia = [
+    (header, seq)
+    for header, seq in records
+    if "durinskia" not in header.lower()
+]
+
+seen_sequences = set()
+clean = []
+
+for header, seq in no_durinskia:
+    seq_upper = seq.upper()
+
+    if seq_upper in seen_sequences:
+        continue
+
+    seen_sequences.add(seq_upper)
+    clean.append((header, seq))
+
+with open(OUTPUT, "w") as out:
+    for header, seq in clean:
+        out.write(">" + header + "\n")
+
+        for i in range(0, len(seq), 80):
+            out.write(seq[i:i+80] + "\n")
+
+print("Starting sequences:", len(records))
+print("After removing Durinskia:", len(no_durinskia))
+print("After exact-sequence deduplication:", len(clean))
+```
+
+The curated reference dataset had the following length distribution:
+
+```text
+Reference sequences:  87
+Minimum length:        1,386 bp
+Average length:        1,446.9 bp
+Maximum length:        1,500 bp
+```
+
+The Deer Lake rbcL sequence was added to the 87-reference dataset:
+
+```bash
+cat DeerLake_diatom_rbcL.fasta \
+    rbcL_no_Durinskia_deduplicated.fasta \
+    > all_rbcL_for_tree.fasta
+```
+
+This produced a dataset of 88 sequences.
+
+#### rbcL sequence orientation
+
+Some rbcL sequences downloaded from complete plastid genomes were stored in the opposite orientation. Before alignment, sequence orientation was checked by comparing the Deer Lake rbcL sequence against the complete rbcL dataset with local BLASTN.
+
+```bash
+makeblastdb \
+    -in all_rbcL_for_tree.fasta \
+    -dbtype nucl \
+    -out rbcL_orientation_db
+```
+
+```bash
+blastn \
+    -query DeerLake_diatom_rbcL.fasta \
+    -db rbcL_orientation_db \
+    -max_target_seqs 200 \
+    -max_hsps 1 \
+    -outfmt "6 sseqid sstart send pident length" \
+    > rbcL_orientation.tsv
+```
+
+For each subject sequence:
+
+```text
+sstart < send   = same orientation as Deer Lake
+sstart > send   = reverse orientation
+```
+
+Sequences with `sstart > send` were reverse complemented before alignment. The resulting orientation-corrected file was:
+
+```text
+all_rbcL_oriented.fasta
+```
+
+#### rbcL alignment and trimming
+
+The 88 orientation-corrected sequences were aligned with Clustal Omega:
+
+```bash
+clustalo \
+    -i all_rbcL_oriented.fasta \
+    -o all_rbcL_oriented_aligned.fasta \
+    --threads=32 \
+    --force
+```
+
+The aligned dataset contained:
+
+```text
+Sequences:          88
+Alignment length:   1,509 bp
+```
+
+The alignment was trimmed with TrimAl:
+
+```bash
+trimal \
+    -in all_rbcL_oriented_aligned.fasta \
+    -out all_rbcL_oriented_aligned_trimmed.fasta \
+    -automated1
+```
+
+The final trimmed rbcL alignment contained:
+
+```text
+Sequences:          88
+Alignment length:   1,473 bp
+```
+
+Coordinates appended to some NCBI FASTA identifiers were removed before tree inference:
+
+```bash
+sed -E 's/^>([^: ]+):[0-9]+-[0-9]+ />\1 /' \
+    all_rbcL_oriented_aligned_trimmed.fasta \
+    > all_rbcL_FINAL_alignment.fasta
+```
+
+The maximum-likelihood rbcL tree was inferred with IQ-TREE 2:
+
+```bash
+/home/ruchita.solanki/iqtree-2.2.2.7-Linux/bin/iqtree2 \
+    -s all_rbcL_FINAL_alignment.fasta \
+    -m MFP \
+    -bb 1000 \
+    -alrt 1000 \
+    -nt 32 \
+    -pre DeerLake_rbcL \
+    -redo
+```
+
+The main output tree is:
+
+```text
+DeerLake_rbcL.treefile
+```
+
+Across all three marker analyses, phylogenetic placement was evaluated from the inferred tree topology and branch-support values rather than assigning species identity from BLAST similarity alone.
 
 </details>
 
