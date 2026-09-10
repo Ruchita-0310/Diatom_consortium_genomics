@@ -1,7 +1,7 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom-associated microbial consortium. The pipeline combines long-read metagenomic assembly, short-read polishing, metagenomic binning, contig-level taxonomic screening, organelle identification, marker-based phylogenetic analyses using 18S rRNA, plastid 16S rRNA, and rbcL, transcriptome analysis, BRAKER4 ET gene prediction, nuclear-enriched genome generation, functional annotation, expression integration, nucleotide-level comparisons with the reference diatoms *Phaeodactylum tricornutum* and *Thalassiosira pseudonana*, and Hi-C read mapping and contact-network analysis.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The pipeline combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses using 18S rRNA, plastid 16S rRNA, and rbcL, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware nuclear proteome curation, and comparative protein orthology analysis using OrthoFinder.
 
-The final gene table retains one row per BRAKER4 predicted protein isoform and includes separate gene-linked nucleotide-similarity fields for *P. tricornutum* and *T. pseudonana*. These fields are screening results and are not interpreted as confirmed orthology.
+The final OrthoFinder comparison included the Deer Lake diatom and four reference diatoms: *Nitzschia inconspicua*, *Seminavis robusta*, *Phaeodactylum tricornutum*, and *Thalassiosira pseudonana*. Earlier whole genome BLASTN comparisons with *P. tricornutum* and *T. pseudonana* are retained in the repository as exploratory nucleotide similarity analyses and are not interpreted as orthology.
 
 ---
 
@@ -33,13 +33,21 @@ Functional annotation with Swiss-Prot, Bacillariophyta UniProtKB, InterProScan, 
    ↓
 Expression integration using best TransDecoder ORF-to-BRAKER4 mappings and Average_TPM only
    ↓
-Phaeodactylum tricornutum whole-genome BLASTN comparison
-   ↓
-Thalassiosira pseudonana whole-genome BLASTN comparison
-   ↓
-Separate gene-linked yes/no fields for both reference diatoms
+Exploratory Phaeodactylum tricornutum and Thalassiosira pseudonana whole-genome BLASTN screens
    ↓
 Final clean BRAKER4 isoform-level gene table for pathway curation
+   ↓
+Nuclear representative proteome curation
+   ↓
+RepeatModeler and RepeatMasker repeat analysis
+   ↓
+Targeted removal of high-confidence TE-derived protein models
+   ↓
+Reference proteome standardization for PT, TP, NI, and SR
+   ↓
+Five-species protein orthology with OrthoFinder
+   ↓
+Final 14,979-gene comparative table with Average_TPM and four orthogroup-sharing fields
    ↓
 Hi-C read mapping to polished whole assembly
    ↓
@@ -65,7 +73,7 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Genome annotation                | BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, STAR, BUSCO/compleasm                                                                           |
 | Functional annotation            | DIAMOND, UniProtKB/Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, Pfam, PANTHER, Gene3D, CDD, SMART, SUPERFAMILY, ProSite, Python |
 | Expression integration           | DIAMOND, Python, pandas, TransDecoder ORFs, Average_TPM table                                                                           |
-| Comparative genomics             | NCBI RefSeq/FTP, wget, gzip, BLASTN, bedtools, seqkit, Python, pandas                                                                    |
+| Comparative genomics             | NCBI RefSeq/FTP, BLASTN, bedtools, seqkit, RepeatModeler, RepeatMasker, OrthoFinder, DIAMOND, FAMSA, FastTree, Python                 |
 | Hi-C mapping and contact network | FastQC, MultiQC, BWA-MEM, samtools, seqkit, YaHS, awk, Python                                                                           |
 
 ---
@@ -91,10 +99,15 @@ scripts/
 ├── 14_make_hic_network_files.py
 ├── 15_make_hic_primary_mapq30_pid95_tables.py
 ├── 16_make_hic_pair_type_tables.py
-└── 17_make_hic_simple_mixed_read_table.py
+├── 17_make_hic_simple_mixed_read_table.py
+├── 18_make_DL_nuclear_representative_proteome.py
+├── 19_calculate_DL_CDS_repeat_overlap.py
+├── 20_classify_DL_TE_candidates.py
+├── 21_prepare_reference_proteome.py
+└── 22_make_final_orthofinder_gene_table.py
 ```
 
-The scripts are numbered sequentially from `01` to `17` to make the workflow order easier to follow.
+The scripts are numbered sequentially from `01` to `22`. Shell and SLURM workflows remain documented directly in the relevant README sections, while custom Python logic is stored in `scripts/`.
 
 Script purposes:
 
@@ -149,6 +162,21 @@ Script purposes:
 
 17_make_hic_simple_mixed_read_table.py
   Creates the final simplified read-level table for mixed diatom-bacterial Hi-C pairs.
+
+18_make_DL_nuclear_representative_proteome.py
+  Selects one representative nuclear BRAKER4 protein per Deer Lake gene, excludes specified AntiFam gene roots, and removes only unsupported proteins shorter than 50 aa.
+
+19_calculate_DL_CDS_repeat_overlap.py
+  Intersects final representative CDS coordinates with RepeatMasker annotations and summarizes repeat overlap without double counting overlapping repeat hits.
+
+20_classify_DL_TE_candidates.py
+  Applies a conservative annotation-supported review scheme to repeat-overlapping Deer Lake protein models and writes the Tier 1 TE removal list.
+
+21_prepare_reference_proteome.py
+  Creates one representative protein per NCBI locus tag and optionally excludes organelle contigs; used for PT, TP, SR, and NI preparation.
+
+22_make_final_orthofinder_gene_table.py
+  Builds the final 14,979-row Deer Lake table with functional annotation, Average_TPM, and four OrthoFinder orthogroup-sharing yes/no fields.
 ```
 ---
 # Analysis workflow
@@ -2876,20 +2904,651 @@ present_in_Thalassiosira_pseudonana
   Gene-linked nucleotide-similarity yes/no field from the Thalassiosira comparison.
 ```
 
-The review table is intended for manual pathway curation and biological interpretation without carrying forward detailed intermediate BLASTN or annotation fields.
+The review table is intended for manual pathway curation and biological interpretation without carrying forward detailed intermediate BLASTN or annotation fields. The PT and TP nucleotide fields are retained as exploratory similarity screens. The primary final protein comparison and four-species orthogroup-sharing table are documented in Section 19.
 
 </details>
 
 ---
 
 <details>
-<summary><strong>19. Hi-C read mapping and contig-level proximity-ligation network</strong> - BWA-MEM, samtools, awk, YaHS, and Python</summary>
+<summary><strong>19. Repeat aware nuclear proteome curation and five species protein orthology</strong> - RepeatModeler, RepeatMasker, OrthoFinder, DIAMOND, FAMSA, FastTree, seqkit, and Python</summary>
+
+This section describes the final protein comparison used to replace the earlier nucleotide similarity screen as the primary comparative analysis. The workflow first generated a nonredundant Deer Lake nuclear representative proteome, screened predicted coding sequences against a de novo repeat library, removed a small set of high confidence transposable element derived models, standardized four reference diatom proteomes, and then inferred orthogroups with OrthoFinder.
+
+The four reference diatoms were:
+
+```text
+Phaeodactylum tricornutum       GCF_000150955.2
+Thalassiosira pseudonana        GCF_000149405.2
+Seminavis robusta               GCA_903772945.1
+Nitzschia inconspicua           GCA_019154785.2
+```
+
+The *Nitzschia inconspicua* assembly is diploid. Its nuclear protein set was therefore retained without sequence identity based deduplication. OrthoFinder results involving this species were interpreted as orthogroup sharing rather than gene copy number differences.
+
+### 19.1 Working directories
+
+```bash
+BASE=/work/ebg_lab/eb/diatom_consortia
+COMP=${BASE}/comparative_genomics
+
+mkdir -p ${COMP}/00_DL_reference
+mkdir -p ${COMP}/01_SR_reference
+mkdir -p ${COMP}/02_PT_reference
+mkdir -p ${COMP}/03_TP_reference
+mkdir -p ${COMP}/04_repeat_analysis
+mkdir -p ${COMP}/orthofinder_input
+mkdir -p ${COMP}/orthofinder_results
+```
+
+Custom Python scripts used in this section are stored externally in `scripts/`:
+
+```text
+scripts/18_make_DL_nuclear_representative_proteome.py
+scripts/19_calculate_DL_CDS_repeat_overlap.py
+scripts/20_classify_DL_TE_candidates.py
+scripts/21_prepare_reference_proteome.py
+scripts/22_make_final_orthofinder_gene_table.py
+```
+
+### 19.2 Deer Lake nuclear genome used for repeat analysis
+
+The nuclear enriched Deer Lake assembly was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/nuclear_genome_filtering_18_diatom/18_diatom_nuclear_enriched.v1.fasta
+```
+
+It was linked into the repeat analysis directory:
+
+```bash
+cd ${COMP}/04_repeat_analysis
+
+ln -sfn \
+${BASE}/nuclear_genome_filtering_18_diatom/18_diatom_nuclear_enriched.v1.fasta \
+DL_nuclear_genome.fasta
+
+seqkit stats DL_nuclear_genome.fasta
+```
+
+Observed assembly statistics:
+
+```text
+Sequences:       3,007
+Total length:   81,911,772 bp
+Minimum:               498 bp
+Mean:              27,240.4 bp
+Maximum:           278,139 bp
+```
+
+### 19.3 De novo repeat discovery with RepeatModeler
+
+The ARC software modules were used instead of a Conda RepeatModeler environment because the cluster modules provided a working Perl and RepeatScout dependency stack.
+
+```text
+RepeatModeler 2.0.1
+RepeatMasker 4.1.1
+RepeatScout 1.0.6
+RMBlast 2.10.0
+TRF 4.09
+```
+
+The standard RepeatModeler RECON and RepeatScout workflow was used. `LTRStruct` was not enabled in this run.
+
+The following SLURM script was used directly on ARC:
+
+```bash
+#!/bin/bash
+####### Reserve computing resources #############
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=120:00:00
+#SBATCH --mem=100G
+#SBATCH --partition=cpu2025
+####### Run your script #########################
+
+set -euo pipefail
+
+module purge
+module load repeatmasker/4.1.1
+module load repeatmodeler/2.0.1
+
+BASE=/work/ebg_lab/eb/diatom_consortia/comparative_genomics/04_repeat_analysis
+GENOME=${BASE}/DL_nuclear_genome.fasta
+WORKDIR=${BASE}/01_repeatmodeler
+DBNAME=DL_nuclear_repeatmodeler_db
+
+mkdir -p "${WORKDIR}"
+mkdir -p "${BASE}/tmp"
+
+export TMPDIR="${BASE}/tmp"
+
+cd "${WORKDIR}"
+ln -sfn "${GENOME}" DL_nuclear_genome.fasta
+
+BuildDatabase \
+    -name "${DBNAME}" \
+    DL_nuclear_genome.fasta
+
+RepeatModeler \
+    -database "${DBNAME}" \
+    -pa 8 \
+    2>&1 | tee repeatmodeler.log
+
+LIB=$(find . -type f -name "consensi.fa.classified" | head -n 1)
+
+if [[ -z "${LIB}" ]]; then
+    echo "ERROR: consensi.fa.classified was not produced." >&2
+    exit 1
+fi
+
+cp "${LIB}" \
+    "${BASE}/DL_RepeatModeler_consensi.fa.classified"
+
+grep -c '^>' "${BASE}/DL_RepeatModeler_consensi.fa.classified" \
+    > "${BASE}/RepeatModeler_family_count.txt"
+```
+
+The final de novo repeat library contained:
+
+```text
+Repeat consensus families:   434
+Total consensus length:       733,476 bp
+Mean consensus length:        1,690 bp
+Maximum consensus length:     8,276 bp
+```
+
+Family classifications were summarized with:
+
+```bash
+grep '^>' DL_RepeatModeler_consensi.fa.classified \
+| sed 's/^.*#//' \
+| sed 's/ .*//' \
+| sort \
+| uniq -c \
+| sort -nr \
+> DL_RepeatModeler_family_classes.txt
+```
+
+Observed family counts included:
+
+```text
+Unknown                 249
+LTR/Copia                89
+DNA/PIF-Harbinger        33
+LTR/Ngaro                12
+LTR/Gypsy                12
+DNA/PIF-HarbS            11
+LINE/CRE-Ambal            8
+DNA/Sola-1                5
+DNA/TcMar-Sagan           4
+DNA/TcMar-Tc2             3
+DNA/TcMar-Ant1            2
+DNA/MULE-MuDR             2
+DNA/TcMar-Stowaway        1
+DNA/TcMar-m44             1
+DNA/PiggyBac              1
+DNA/Crypton-F             1
+```
+
+### 19.4 RepeatMasker annotation of the Deer Lake nuclear genome
+
+The RepeatModeler library was used as a custom RepeatMasker library.
+
+```bash
+#!/bin/bash
+####### Reserve computing resources #############
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=120:00:00
+#SBATCH --mem=100G
+#SBATCH --partition=cpu2025
+####### Run your script #########################
+
+set -euo pipefail
+
+module purge
+module load repeatmasker/4.1.1
+module load repeatmodeler/2.0.1
+
+BASE=/work/ebg_lab/eb/diatom_consortia/comparative_genomics/04_repeat_analysis
+GENOME=${BASE}/DL_nuclear_genome.fasta
+LIB=${BASE}/DL_RepeatModeler_consensi.fa.classified
+OUTDIR=${BASE}/02_repeatmasker
+
+mkdir -p "${OUTDIR}"
+
+RepeatMasker \
+    -e rmblast \
+    -pa 8 \
+    -lib "${LIB}" \
+    -xsmall \
+    -gff \
+    -gccalc \
+    -dir "${OUTDIR}" \
+    "${GENOME}" \
+    2>&1 | tee "${OUTDIR}/repeatmasker.log"
+
+TBL=$(find "${OUTDIR}" -maxdepth 1 -type f -name "*.tbl" | head -n 1)
+cp "${TBL}" "${BASE}/DL_RepeatMasker_summary.tbl"
+```
+
+RepeatMasker identified 45,345,998 bp of masked sequence, corresponding to 55.36% of the 81.91 Mb nuclear assembly. Interspersed repeats accounted for 54.55% of the assembly. LTR elements were the largest classified component, with Ty1/Copia sequence occupying 28.09% of the genome.
+
+```text
+All masked sequence                55.36%
+Interspersed repeats               54.55%
+Retroelements                      37.00%
+LTR elements                       36.68%
+Ty1/Copia                          28.09%
+Gypsy/DIRS1                         3.22%
+LINEs                               0.33%
+DNA transposons                     7.81%
+Tourist/Harbinger                   4.02%
+Tc1/IS630/Pogo                      1.65%
+Unclassified interspersed repeats   9.74%
+Simple repeats                      0.77%
+Low complexity                      0.03%
+```
+
+This repeat analysis was used as quality control for the predicted protein set. The genome was not reannotated after this step.
+
+### 19.5 Deer Lake representative nuclear proteome
+
+The BRAKER4 ET annotation contained 15,102 genes and 16,947 protein isoforms. A single representative protein was selected per nuclear gene. The two AntiFam flagged gene roots were excluded, and the longest valid protein isoform was retained for each remaining gene. Extremely short proteins were removed only when they were shorter than 50 amino acids, lacked an Average_TPM value, and were unannotated.
+
+Run:
+
+```bash
+python scripts/18_make_DL_nuclear_representative_proteome.py \
+    --gene-table ${BASE}/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW/09_final/DL_diatom_FINAL_gene_table_for_boss_PT_TP_NI.tsv \
+    --proteins ${BASE}/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.proteins.faa \
+    --out-fasta ${COMP}/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome.faa \
+    --out-map ${COMP}/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome_map.tsv \
+    --antifam-gene-roots g10893,g11404 \
+    --min-aa 50
+```
+
+Observed counts:
+
+```text
+Representative nuclear genes before short protein filter:   15,030
+Short unsupported proteins removed:                             13
+Representative proteins after this filter:                  15,017
+```
+
+### 19.6 CDS overlap with interspersed repeats
+
+Repeat overlap was evaluated across CDS bases rather than complete gene spans so that intronic repeats would not automatically classify an otherwise valid gene model as repeat derived.
+
+The RepeatMasker `.out` file was used because it retains repeat class information. Overlapping RepeatMasker hits were resolved by assigning each genomic segment to the highest scoring hit before CDS overlap was calculated.
+
+```bash
+mkdir -p ${COMP}/04_repeat_analysis/03_CDS_repeat_overlap
+
+python scripts/19_calculate_DL_CDS_repeat_overlap.py \
+    --map ${COMP}/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome_map.tsv \
+    --gff ${BASE}/metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.gff3 \
+    --repeatmasker-out ${COMP}/04_repeat_analysis/02_repeatmasker/DL_nuclear_genome.fasta.out \
+    --outdir ${COMP}/04_repeat_analysis/03_CDS_repeat_overlap \
+    --candidate-threshold 50
+```
+
+Observed interspersed repeat overlap across the 15,017 representative CDS models:
+
+```text
+0% overlap             14,377 genes   95.74%
+>0 to 10%                 329 genes    2.19%
+>10 to 25%                 63 genes    0.42%
+>25 to 50%                 59 genes    0.39%
+>50 to 75%                 32 genes    0.21%
+>75 to 100%               157 genes    1.05%
+```
+
+Thus, 189 genes had at least 50% CDS overlap with an interspersed repeat and were carried forward for targeted review.
+
+### 19.7 Conservative transposable element model filtering
+
+The 189 repeat overlapping models were separated into three review tiers. A model was classified as high confidence transposable element derived only when at least 50% of its CDS overlapped an interspersed repeat and its functional annotation independently indicated transposable element associated activity, including reverse transcriptase, transposase, integrase, gag, Copia, or DDE transposase related functions.
+
+```bash
+python scripts/20_classify_DL_TE_candidates.py \
+    --candidates ${COMP}/04_repeat_analysis/03_CDS_repeat_overlap/DL_CDS_repeat_overlap_candidates_ge50.tsv \
+    --outdir ${COMP}/04_repeat_analysis/03_CDS_repeat_overlap
+```
+
+Observed classification:
+
+```text
+Tier 1, high confidence TE derived:      38
+Tier 2, probable TE, retained for review: 65
+Tier 3, retained for review:              86
+```
+
+Only the 38 Tier 1 models were removed from the comparative proteome. Tier 2 and Tier 3 models were retained because repeat overlap alone was not considered sufficient evidence for deletion.
+
+```bash
+IN=${COMP}/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome.faa
+REMOVE=${COMP}/04_repeat_analysis/03_CDS_repeat_overlap/DL_TIER1_TE_gene_roots.txt
+OUT=${COMP}/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered.faa
+
+seqkit grep \
+    -v \
+    -f "${REMOVE}" \
+    "${IN}" \
+    > "${OUT}"
+
+seqkit stats "${OUT}"
+
+# Filter the matching metadata map with the same 38 gene roots.
+awk 'NR==FNR {remove[$1]=1; next} FNR==1 || !($1 in remove)' \
+    "${REMOVE}" \
+    ${COMP}/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome_map.tsv \
+    > ${COMP}/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_map.tsv
+```
+
+Final Deer Lake comparative proteome:
+
+```text
+Proteins:        14,979
+Total length:     7,329,909 aa
+Minimum:                 67 aa
+Mean:                 489.3 aa
+Maximum:              7,782 aa
+```
+
+The matching metadata map was filtered using the same Tier 1 gene root list so that the final FASTA and table contained the same 14,979 genes.
+
+### 19.8 Reference proteome standardization
+
+Reference proteomes and matching GFF3 files were obtained from NCBI. One representative protein was retained per protein coding locus for *P. tricornutum*, *T. pseudonana*, and *S. robusta*. The longest protein model was used when more than one protein was assigned to the same locus tag.
+
+The generic preparation script can be run as:
+
+```bash
+python scripts/21_prepare_reference_proteome.py \
+    --proteins <NCBI_PROTEIN_FASTA> \
+    --gff <MATCHING_GFF3> \
+    --out-fasta <OUTPUT_FASTA> \
+    --out-map <OUTPUT_MAP_TSV> \
+    --id-mode locus
+```
+
+Final reference proteome counts were:
+
+```text
+Phaeodactylum tricornutum     10,392 proteins
+Thalassiosira pseudonana      11,672 proteins
+Seminavis robusta             35,995 proteins
+```
+
+#### 19.8.1 Diploid *Nitzschia inconspicua* protein set
+
+The NCBI protein FASTA for *N. inconspicua* contained 38,785 proteins. GFF3 inspection showed that 150 proteins were encoded on plastid accession `MW971520.1` and 34 proteins were encoded on mitochondrial accession `MW971521.1`.
+
+The organelle counts were verified with:
+
+```bash
+grep -v '^#' Nitzschia_inconspicua_GCA_019154785.2_genomic.gff3 \
+| awk '$1=="MW971520.1" && $3=="CDS"' \
+| sed -n 's/.*protein_id=\([^;]*\).*/\1/p' \
+| sort -u \
+| wc -l
+
+grep -v '^#' Nitzschia_inconspicua_GCA_019154785.2_genomic.gff3 \
+| awk '$1=="MW971521.1" && $3=="CDS"' \
+| sed -n 's/.*protein_id=\([^;]*\).*/\1/p' \
+| sort -u \
+| wc -l
+```
+
+The observed counts were 150 plastid proteins and 34 mitochondrial proteins. After excluding these organelle contigs, 38,601 nuclear protein coding loci remained.
+
+The generic reference preparation script can reproduce this nuclear set while preserving NCBI protein IDs:
+
+```bash
+python scripts/21_prepare_reference_proteome.py \
+    --proteins Nitzschia_inconspicua_GCA_019154785.2_protein.faa \
+    --gff Nitzschia_inconspicua_GCA_019154785.2_genomic.gff3 \
+    --exclude-contigs MW971520.1,MW971521.1 \
+    --id-mode protein \
+    --out-fasta Nitzschia_inconspicua_nuclear.faa \
+    --out-map Nitzschia_inconspicua_nuclear_map.tsv
+```
+
+Final *N. inconspicua* nuclear proteome:
+
+```text
+Proteins:        38,601
+Total length:    19,032,900 aa
+Minimum:                 45 aa
+Mean:                 493.1 aa
+Maximum:              9,933 aa
+```
+
+The diploid nuclear gene complement was retained. Sequence identity based deduplication was not used because it could collapse biological paralogs together with allelic copies.
+
+### 19.9 Final five species OrthoFinder input
+
+The final OrthoFinder directory contained exactly five FASTA files:
+
+```text
+DeerLake_Nitzschia.faa             14,979 proteins
+Nitzschia_inconspicua.faa          38,601 proteins
+Phaeodactylum_tricornutum.faa      10,392 proteins
+Seminavis_robusta.faa              35,995 proteins
+Thalassiosira_pseudonana.faa       11,672 proteins
+```
+
+FASTA identifiers were checked for uniqueness:
+
+```bash
+cd ${COMP}/orthofinder_input
+
+for f in *.faa; do
+    echo "=== $f ==="
+    seqkit seq -n "$f" \
+    | awk '{print $1}' \
+    | sort \
+    | uniq -d \
+    | wc -l
+done
+```
+
+No duplicate FASTA IDs were detected. Protein sequences were also checked for stop codons and unusual amino acid characters before analysis.
+
+### 19.10 OrthoFinder installation
+
+A dedicated Miniforge environment was used:
+
+```bash
+source ~/miniforge3/etc/profile.d/conda.sh
+
+conda create -n orthofinder \
+    --override-channels \
+    --strict-channel-priority \
+    -c conda-forge \
+    -c bioconda \
+    orthofinder \
+    -y
+
+conda activate orthofinder
+```
+
+Versions used:
+
+```text
+OrthoFinder 3.1.5
+DIAMOND 2.2.6
+FAMSA supplied in the OrthoFinder environment
+FastTree supplied in the OrthoFinder environment
+```
+
+### 19.11 Five species OrthoFinder run
+
+The following SLURM workflow was used:
+
+```bash
+#!/bin/bash
+####### Reserve computing resources #############
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=120:00:00
+#SBATCH --mem=100G
+#SBATCH --partition=cpu2025
+####### Run your script #########################
+
+set -euo pipefail
+
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate /home/ruchita.solanki/miniforge3/envs/orthofinder
+
+INPUT=/work/ebg_lab/eb/diatom_consortia/comparative_genomics/orthofinder_input
+OUTPUT=/work/ebg_lab/eb/diatom_consortia/comparative_genomics/orthofinder_results/DL_5species_orthofinder_v3
+
+NFILES=$(find "${INPUT}" -maxdepth 1 -type f -name "*.faa" | wc -l)
+
+if [[ "${NFILES}" -ne 5 ]]; then
+    echo "ERROR: Expected exactly 5 proteome FASTA files, found ${NFILES}"
+    exit 1
+fi
+
+if [[ -e "${OUTPUT}" ]]; then
+    echo "ERROR: Output directory already exists: ${OUTPUT}"
+    exit 1
+fi
+
+orthofinder \
+    -f "${INPUT}" \
+    -t 32 \
+    -a 32 \
+    -S diamond \
+    -M msa \
+    -A famsa \
+    -T fasttree \
+    -o "${OUTPUT}"
+
+ORTHOGROUP_FILE=$(find "${OUTPUT}" -type f -name "Orthogroups.tsv" | head -n 1)
+
+if [[ -z "${ORTHOGROUP_FILE}" ]]; then
+    echo "ERROR: Orthogroups.tsv was not produced."
+    exit 1
+fi
+```
+
+OrthoFinder completed with the following summary:
+
+```text
+Total input proteins:                        111,639
+Genes assigned to orthogroups:               99,813   89.4%
+Orthogroups:                                  16,157
+Orthogroups containing all five species:       4,914
+All species single copy orthogroups:             276
+```
+
+Because the *N. inconspicua* assembly is diploid, family size differences involving that species were not interpreted as gene expansion or contraction. The primary comparison used binary orthogroup sharing for each Deer Lake protein.
+
+### 19.12 Final Deer Lake comparative gene table
+
+The final output was designed to retain the same core fields used in the earlier PT and TP review table while replacing nucleotide similarity calls with OrthoFinder protein orthogroup sharing and adding *N. inconspicua* and *S. robusta*.
+
+The final columns are:
+
+```text
+gene_id
+contig_id
+diatom_compartment
+diatom_gene_length_bp
+functional_annotation
+diatom_Average_TPM
+present_in_Thalassiosira_pseudonana
+present_in_Phaeodactylum_tricornutum
+present_in_Nitzschia_inconspicua
+present_in_Seminavis_robusta
+```
+
+Run:
+
+```bash
+RESULTS=${COMP}/orthofinder_results/DL_5species_orthofinder_v3/Results_Sep09
+
+python scripts/22_make_final_orthofinder_gene_table.py \
+    --orthogroups ${RESULTS}/Orthogroups/Orthogroups.tsv \
+    --dl-map ${COMP}/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_map.tsv \
+    --metadata ${BASE}/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW/09_final/DL_diatom_FINAL_gene_table_for_boss_PT_TP_NI.tsv \
+    --out ${RESULTS}/Orthogroups/DL_diatom_FINAL_gene_table_OrthoFinder_PT_TP_NI_SR.tsv \
+    --expected-genes 14979
+```
+
+Observed final counts:
+
+```text
+Final Deer Lake genes:                 14,979
+Shared orthogroup with N. inconspicua: 10,163   67.85%
+Shared orthogroup with S. robusta:      9,952   66.44%
+Shared orthogroup with P. tricornutum:  7,973   53.23%
+Shared orthogroup with T. pseudonana:   7,569   50.53%
+```
+
+The final file contains 14,979 data rows and one header row:
+
+```text
+Orthogroups/DL_diatom_FINAL_gene_table_OrthoFinder_PT_TP_NI_SR.tsv
+```
+
+In this table, `yes` indicates that the Deer Lake protein belongs to an OrthoFinder orthogroup containing at least one protein from the corresponding comparator. A `no` value means that no protein from that comparator was present in the Deer Lake protein's orthogroup, or that the Deer Lake protein was unassigned by OrthoFinder. These fields therefore represent orthogroup sharing, not definitive biological gene absence.
+
+### 19.13 Final outputs
+
+```text
+comparative_genomics/
+├── 00_DL_reference/
+│   ├── DL_diatom_FINAL_nuclear_representative_proteome.faa
+│   ├── DL_diatom_FINAL_nuclear_representative_proteome_map.tsv
+│   ├── DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered.faa
+│   └── DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_map.tsv
+├── 04_repeat_analysis/
+│   ├── DL_RepeatModeler_consensi.fa.classified
+│   ├── DL_RepeatMasker_summary.tbl
+│   └── 03_CDS_repeat_overlap/
+│       ├── DL_representative_proteins_CDS_repeat_overlap.tsv
+│       ├── DL_CDS_repeat_overlap_bins.tsv
+│       ├── DL_TE_candidate_classification.tsv
+│       ├── DL_TIER1_TE_gene_roots.txt
+│       └── TIER1_high_confidence_TE.tsv
+├── orthofinder_input/
+│   ├── DeerLake_Nitzschia.faa
+│   ├── Nitzschia_inconspicua.faa
+│   ├── Phaeodactylum_tricornutum.faa
+│   ├── Seminavis_robusta.faa
+│   └── Thalassiosira_pseudonana.faa
+└── orthofinder_results/
+    └── DL_5species_orthofinder_v3/
+        └── Results_Sep09/
+            ├── Orthogroups/
+            ├── Orthologues/
+            ├── Species_Tree/
+            ├── Gene_Duplication_Events/
+            └── Comparative_Genomics_Statistics/
+```
+
+The earlier PT and TP BLASTN comparisons remain useful as nucleotide similarity screens, but the OrthoFinder table is the primary protein based comparative gene table for downstream interpretation.
+
+</details>
+
+---
+
+<details>
+<summary><strong>20. Hi-C read mapping and contig-level proximity-ligation network</strong> - BWA-MEM, samtools, awk, YaHS, and Python</summary>
 
 Hi-C paired-end reads were incorporated after the main assembly, annotation, expression, and comparative-genomics workflow. The goal was to assess how broadly the polished whole assembly was represented in the proximity-ligation dataset, identify contigs connected by Hi-C read pairs, and separately test high-confidence diatom-bacterial read-pair contacts.
 
 The Hi-C analysis was performed on the polished whole assembly rather than the nuclear-enriched subset because the proximity-ligation reads were generated from the complete diatom-associated consortium. This allowed diatom, bacterial, and mixed diatom-bacterial contacts to be evaluated in the same coordinate space.
 
-### 19.1 Input files and working directories
+### 20.1 Input files and working directories
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia
 
@@ -2917,7 +3576,7 @@ Diatom draft genome used for contig-type classification in the separate-read ana
 
 Contigs present in `18_diatom.fasta` were treated as diatom contigs. All remaining contigs in the polished whole assembly were treated as bacterial for the purpose of the diatom-bacterial Hi-C read-pair screen.
 
-### 19.2 Map Hi-C reads to the polished whole assembly as paired-end reads
+### 20.2 Map Hi-C reads to the polished whole assembly as paired-end reads
 The original assembly directory was not writable by the Hi-C job, so the assembly was linked into the Hi-C working directory and indexed there.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
@@ -2977,7 +3636,7 @@ All mapped alignments:      803,799 / 1,071,642 = 75.01%
 Read pairs:                 445,405
 Singletons:                 54,019 reads = 6.06%
 ```
-### 19.3 Summarize contig-level Hi-C representation
+### 20.3 Summarize contig-level Hi-C representation
 ```bash
 awk 'BEGIN {
     OFS="	";
@@ -3033,7 +3692,7 @@ Contigs with >=1 Hi-C read mapped: 4,010
 Contigs with 0 Hi-C reads mapped: 915
 Percent contigs with Hi-C reads mapped: 81.42%
 ```
-### 19.4 Exploratory whole-assembly Hi-C scaffolding with YaHS
+### 20.4 Exploratory whole-assembly Hi-C scaffolding with YaHS
 Whole-assembly Hi-C scaffolding was tested with YaHS as an exploratory step. Because the assembly represents a consortium, this result was treated cautiously and was not used as the final Hi-C integration output.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/03_yahs_scaffolding
@@ -3065,7 +3724,7 @@ YaHS output:
 maximum scaffold length: 5,424,378 bp
 ```
 The YaHS run did not increase maximum scaffold length and increased the number of sequences. Therefore, the whole-assembly YaHS output was treated as exploratory rather than as a final scaffolded assembly.
-### 19.5 Extract all-primary inter-contig Hi-C contacts
+### 20.5 Extract all-primary inter-contig Hi-C contacts
 The final contig-contact network used primary mapped Hi-C read pairs from the paired-end BWA-MEM mapping without applying a MAPQ cutoff. Unmapped reads, mate-unmapped reads, secondary alignments, and supplementary alignments were excluded. Each read pair was counted once if the two mates mapped to different contigs.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms/02_map_to_whole_assembly
@@ -3150,7 +3809,7 @@ length of contig_A
 length of contig_B
 ```
 Each row represents one pair of contigs connected by Hi-C proximity-ligation evidence.
-### 19.6 Summarize connected contigs
+### 20.6 Summarize connected contigs
 ```bash
 awk 'NR>1 {print $1; print $2}' \
     hic_intercontig_contacts_all_primary_pairs.tsv \
@@ -3196,7 +3855,7 @@ Final all-primary contact-network summary:
 Connected contigs: 3,770
 Inter-contig Hi-C links: 75,703
 ```
-### 19.7 Convert the all-primary contact table to network files
+### 20.7 Convert the all-primary contact table to network files
 The full contig-contact table was converted into GEXF and GraphML network files using a small helper Python script.
 The script is saved as:
 ```text
@@ -3226,7 +3885,7 @@ Edge = Hi-C proximity-ligation contact between two contigs
 Edge weight = number of Hi-C read pairs supporting the contig-to-contig connection
 ```
 
-### 19.8 High-confidence separate-read BWA mapping for diatom-bacterial contacts
+### 20.8 High-confidence separate-read BWA mapping for diatom-bacterial contacts
 A second BWA-MEM mapping was performed to keep the two Hi-C read files separate. This made it possible to ask, for each read ID, whether read 1 and read 2 mapped to different biological fractions of the whole assembly.
 
 The separate-read analysis used a stricter read-level filter than the all-primary contact network:
@@ -3344,7 +4003,7 @@ R2 primary mapped reads:  304,083
 R2 primary mapping rate:  68.27%
 ```
 
-### 19.9 Create high-confidence read-pair tables and classify mixed diatom-bacterial pairs
+### 20.9 Create high-confidence read-pair tables and classify mixed diatom-bacterial pairs
 The high-confidence separate-read tables were generated using custom Python scripts saved outside the markdown file.
 
 The script used to parse the separate BAM files, calculate percent identity from the `NM` tag and aligned CIGAR length, and retain primary MAPQ >= 30 and percent identity >= 95 alignments is saved as:
@@ -3433,7 +4092,7 @@ Each mixed Hi-C pair is represented by two rows, one for read 1 and one for read
 682 read rows
 683 lines including header
 ```
-### 19.10 Organize final Hi-C outputs
+### 20.10 Organize final Hi-C outputs
 After generating the final mapping, contact-network, and separate-read mixed-contact outputs, files were organized into final mapping and contact-map folders.
 ```bash
 cd /work/ebg_lab/eb/diatom_consortia/hi-c_diatoms
@@ -3491,7 +4150,7 @@ hic_bwa_separate_reads/
     ├── bwa_mem_R1.log
     └── bwa_mem_R2.log
 ```
-### 19.11 Final Hi-C analysis summary
+### 20.11 Final Hi-C analysis summary
 Hi-C reads mapped to 4,010 of 4,925 contigs in the polished whole assembly, corresponding to 81.42% of assembly contigs. At the read level, 622,967 of 890,810 primary reads mapped to the assembly, corresponding to a primary mapping rate of 69.93%.
 
 Inter-contig proximity-ligation contacts were extracted from primary mapped Hi-C read pairs without applying a MAPQ cutoff. The final all-primary contig-contact network contained 3,770 contig nodes and 75,703 inter-contig Hi-C links.
