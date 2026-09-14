@@ -2,16 +2,16 @@
 
 This repository documents the analysis workflow used to assemble, polish, classify, annotate, and compare genomic and transcriptomic data recovered from a diatom dominated microbial consortium enriched from Deer Lake, British Columbia.
 
-The workflow includes long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, BRAKER4 ET gene prediction, functional annotation, transcript expression integration, nuclear genome refinement, repeat analysis, representative proteome curation, comparative protein orthology analysis, and Hi C read mapping and contact network analysis.
+The workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, BRAKER4 ET gene prediction, functional annotation, transcript expression integration, nuclear genome refinement, repeat analysis, representative gene curation, four genome nucleotide comparison, and Hi C contact analysis.
 
-The final comparative genomics analysis uses OrthoFinder to compare the Deer Lake diatom proteome with four reference diatoms:
+The current comparative nucleotide analysis uses a curated set of **14,941 Deer Lake nuclear genes** and compares them with four reference diatom genomes using `dc-megablast`:
 
-- *Nitzschia inconspicua*
-- *Seminavis robusta*
-- *Phaeodactylum tricornutum*
-- *Thalassiosira pseudonana*
+- *Nitzschia inconspicua* (NI)
+- *Seminavis robusta* (SR)
+- *Phaeodactylum tricornutum* (PT)
+- *Thalassiosira pseudonana* (TP)
 
-Earlier whole genome BLASTN comparisons with *P. tricornutum* and *T. pseudonana* are retained as exploratory nucleotide similarity analyses but are not used as the primary orthology analysis.
+A protein level OrthoFinder comparison is retained as a secondary exploratory analysis. The BLASTN analysis is the current gene level comparison used for the manuscript figure and expression summaries.
 
 ---
 
@@ -34,122 +34,203 @@ Organelle identification
    ↓
 BRAKER4 ET genome annotation
    ↓
-Functional annotation with Swiss-Prot, Bacillariophyta UniProtKB,
-InterProScan, and AntiFam
-   ↓
-Expression integration using TransDecoder ORFs and Average_TPM
+Functional annotation and Average_TPM integration
    ↓
 Nuclear enriched genome generation
    ↓
-One representative Deer Lake protein retained per nuclear gene
+One representative Deer Lake gene retained per nuclear locus
    ↓
 RepeatModeler and RepeatMasker analysis
    ↓
-Removal of high confidence TE associated protein models
+Removal of high confidence TE associated models
    ↓
-Final Deer Lake nuclear representative proteome
+Plastid derived contig quality control
    ↓
-Reference proteome preparation for NI, SR, PT, and TP
+Final Deer Lake BLASTN query: 14,941 genes
    ↓
-Five proteome comparison with OrthoFinder
+Four genome dc-megablast comparison: NI, SR, PT, TP
    ↓
-Deer Lake gene level orthogroup sharing with NI, SR, PT, and TP
+Master 14,941 gene table with BLASTN metrics and Average_TPM
    ↓
-Final comparative gene table with functional annotation,
-Average_TPM, and four reference comparison fields
+Expression comparison and BLASTN unmatched gene subsets
    ↓
-Hi C read mapping and contig contact network
+Secondary five proteome OrthoFinder analysis
+   ↓
+Hi C mapping to the polished whole assembly
+   ↓
+High confidence contig contact table
+   ↓
+Whole assembly network visualization
 ```
 
 ---
 
-## Main outputs
+## Main final outputs
 
-### BRAKER4 gene annotation
+### Deer Lake nuclear gene query
 
-BRAKER4 ET generated:
-
-```text
-15,102 genes
-16,947 predicted protein isoforms
-```
-
-The accepted BRAKER4 protein set is:
+The final nucleotide query contains:
 
 ```text
-metatranscriptomics/BRAKER4/final_annotation_ET/DL_diatom.braker4.ET.proteins.faa
+14,941 Deer Lake nuclear representative genes
 ```
 
-Functional annotation and transcript expression were initially integrated at the BRAKER4 isoform level.
+Final query FASTA:
+
+```text
+comparative_genomics/blastn_redo/00_inputs/
+DL_final_nuclear_genes_repeat_TE_plastid_clean.fasta
+```
+
+The corresponding final protein set after repeat and plastid quality control is:
+
+```text
+comparative_genomics/00_DL_reference/
+DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_plastidQC.faa
+```
+
+The query was derived after:
+
+1. retaining one representative nuclear BRAKER4 gene per locus;
+2. removing two AntiFam associated models during representative proteome curation;
+3. removing 38 high confidence TE associated models using repeat overlap plus annotation evidence; and
+4. removing 38 protein models located on four clearly plastid derived contigs (`contig_475`, `contig_4813`, `contig_5686`, and `contig_5702`).
+
+No mitochondrial based nuclear filtering was applied because the candidate mitochondrial assembly was not considered sufficiently reliable for that purpose.
 
 ---
 
-### Initial functional annotation and expression table
+### Four genome BLASTN comparison
 
-The original clean BRAKER4 isoform table is:
-
-```text
-metatranscriptomics/transdecoder_to_braker_ID_bridge/
-CLEAN_REBUILD_FROM_RAW/09_final/
-DL_diatom_FINAL_clean_BRAKER_isoform_table.tsv
-```
-
-This table contains one row per BRAKER4 predicted protein isoform and integrates:
+Each of the 14,941 Deer Lake genes was searched against NI, SR, PT, and TP using `dc-megablast` with:
 
 ```text
-functional annotation
-BRAKER4 coordinate and length information
-TransDecoder ORF mapping
-Average_TPM
-compartment assignment
-AntiFam annotation flags
+E value <= 1e-10
 ```
 
-The table contains:
+No additional identity, coverage, or gene length cutoff was used to remove genes from the master table.
+
+Raw alignment counts were:
+
+| Comparator | Raw BLASTN alignments |
+| --- | ---: |
+| NI | 27,211 |
+| SR | 12,168 |
+| PT | 7,915 |
+| TP | 4,817 |
+
+The final master table is:
 
 ```text
-16,947 protein isoforms
+DL_14941_genes_BLASTN_NI_SR_PT_TP_with_TPM_compartment.tsv
 ```
 
-These isoform level tables are retained as intermediate annotation resources.
+For each comparator, the table retains the highest bitscore BLASTN alignment for each Deer Lake query gene together with percent identity, alignment length, query coverage, E value, and bitscore. A `yes` hit means that at least one BLASTN alignment was returned under the search criterion; it is not a statement of definitive orthology or biological presence.
+
+Observed gene level hit counts:
+
+| Comparison | Deer Lake genes with a BLASTN hit |
+| --- | ---: |
+| NI | 5,767 |
+| SR | 4,273 |
+| PT | 3,799 |
+| TP | 2,636 |
+| Hit in at least one comparator | 6,429 |
+| No hit in any comparator | 8,512 |
+
+The comparator categories overlap because one Deer Lake gene can have detectable nucleotide similarity to more than one reference genome.
 
 ---
 
-## Nuclear representative proteome
+### Expression integration
 
-Comparative protein analysis was performed using the nuclear enriched Deer Lake genome rather than the original whole diatom assembly.
-
-The nuclear enriched assembly contains:
+Average_TPM values were carried into the master BLASTN table from the curated Deer Lake metadata map.
 
 ```text
-3,007 contigs
-81,911,772 bp
+Genes with a TPM value:       11,092
+Genes with TPM > 0:           10,907
+Genes with TPM = 0:              185
 ```
 
-One representative protein was retained per Deer Lake gene. Alternative BRAKER4 isoforms were reduced to a single representative sequence before comparative analysis.
-
-Protein models shorter than 50 amino acids were removed only when they lacked functional annotation and transcript expression support.
-
-Two AntiFam associated gene models were excluded during the initial representative proteome curation:
+Among genes with no BLASTN hit in any of the four reference genomes:
 
 ```text
-g10893
-g11404
+No comparator hit:                         8,512
+No comparator hit + TPM > 0:              5,332
+No comparator hit + TPM > 0 +
+informative functional annotation:         3,259
 ```
 
-The resulting representative proteome initially contained:
-
-```text
-15,017 proteins
-```
+The term **Deer Lake only** is used as a compact figure label for the first group. In text and figure legends it should be defined as genes with no detectable BLASTN hit to NI, SR, PT, or TP under the search criteria used. These genes should not be described as proven lineage specific or unique genes.
 
 ---
 
-## Repeat analysis and TE associated gene filtering
+### Expression figure
 
-RepeatModeler and RepeatMasker were used to characterize repetitive sequence content in the Deer Lake nuclear assembly.
+`scripts/26_plot_BLASTN_TPM_panelA.py` creates the violin plot comparing:
 
-RepeatMasker identified:
+```text
+Deer Lake only
+Shared with N. inconspicua
+Shared with S. robusta
+Shared with P. tricornutum
+Shared with T. pseudonana
+```
+
+The plot uses `log10(Average TPM + 1)`, retains true TPM values of zero, excludes only missing TPM values, and uses a color blind aware palette. The four shared groups are not mutually exclusive.
+
+---
+
+### Hi C whole assembly network
+
+The polished whole assembly contains:
+
+```text
+4,925 contigs
+```
+
+The high confidence network plotting workflow starts from:
+
+```text
+hic_bwa_separate_reads/03_tables/
+HiC_contig_pair_contacts_MAPQ30_PID95.tsv
+whole_assembly_contig_type_map.tsv
+```
+
+Self contacts were excluded. Oriented contig pair rows supported by at least two Hi C read pairs were retained and then collapsed to unique undirected contig pairs.
+
+Final high confidence network summary:
+
+```text
+Unique undirected edges:       471
+Connected contigs:             487
+Isolated assembly contigs:   4,438
+Minimum edge support:            2 read pairs
+Maximum edge support:          194 read pairs
+Median edge support:             2 read pairs
+```
+
+`scripts/28_plot_HiC_whole_assembly_network.py` plots all 4,925 contigs. Connected contigs are shown in the central Hi C network, while contigs without a retained inter contig edge are shown as small isolated nodes around the network.
+
+The figure highlights:
+
+```text
+Plastid genome associated contigs:
+  contig_1443
+  contig_4315
+
+Candidate mitochondrial contigs:
+  contig_5628
+  contig_1647
+```
+
+The mitochondrial contigs are labelled as **candidate mitochondrial contigs** because their assignment requires additional validation. Hi C contact structure is treated as supporting context rather than a standalone taxonomic classifier.
+
+---
+
+## Repeat analysis
+
+RepeatModeler and RepeatMasker were used to characterize the Deer Lake nuclear enriched assembly.
 
 ```text
 Genome size:                    81,911,772 bp
@@ -162,305 +243,90 @@ DNA transposons:                    7.81%
 Unclassified repeats:               9.74%
 ```
 
-Representative CDS coordinates were intersected with RepeatMasker annotations. Repeat hits overlapping the same genomic interval were resolved before calculating CDS overlap to avoid double counting.
-
-High confidence TE associated protein models were defined conservatively using both substantial CDS overlap with interspersed repeats and explicit TE related functional annotation.
-
-A total of:
-
-```text
-38 protein models
-```
-
-were classified as high confidence TE associated models and removed from the comparative proteome.
-
-The final Deer Lake proteome used for OrthoFinder therefore contains:
-
-```text
-14,979 nuclear representative proteins
-```
-
-Final FASTA:
-
-```text
-comparative_genomics/orthofinder_input/DeerLake_Nitzschia.faa
-```
+Repeat overlap alone was not used to delete genes. Only 38 models with substantial repeat overlap and explicit TE related annotation were removed as high confidence TE associated models.
 
 ---
 
-## Reference diatom proteomes
+## Secondary OrthoFinder analysis
 
-Four reference diatom proteomes were included in the OrthoFinder comparison.
+A five proteome OrthoFinder comparison was also completed using the plastid quality controlled Deer Lake protein set. This analysis is retained as a protein level complement to the BLASTN analysis rather than as the main gene presence or absence result.
 
-| Species | Abbreviation | Proteins used |
-| --- | --- | ---: |
-| Deer Lake diatom | DL | 14,979 |
-| *Nitzschia inconspicua* | NI | 38,601 |
-| *Seminavis robusta* | SR | 35,995 |
-| *Phaeodactylum tricornutum* | PT | 10,392 |
-| *Thalassiosira pseudonana* | TP | 11,672 |
-
-Reference proteomes were standardized before analysis.
-
-For *P. tricornutum* and *T. pseudonana*, one representative protein was retained per annotated locus.
-
-For *N. inconspicua*, organelle encoded proteins were removed before OrthoFinder analysis. This excluded:
+Corrected Deer Lake OrthoFinder input:
 
 ```text
-150 plastid encoded proteins
-34 mitochondrial encoded proteins
+14,941 proteins
 ```
 
-The final *N. inconspicua* nuclear protein set therefore contained:
+Corrected Deer Lake summary:
 
 ```text
-38,601 proteins
+Assigned to orthogroups:  12,677  (84.8%)
+Unassigned:                2,264  (15.2%)
+DL containing orthogroups: 8,970
 ```
 
-The available *N. inconspicua* annotation represents a diploid genome. Consequently, the analysis uses *N. inconspicua* primarily for orthogroup sharing rather than interpretation of gene copy number or gene family expansion.
+Deer Lake genes in orthogroups containing each comparator:
 
-Final OrthoFinder input directory:
-
-```text
-/work/ebg_lab/eb/diatom_consortia/comparative_genomics/orthofinder_input/
-```
-
-containing:
-
-```text
-DeerLake_Nitzschia.faa
-Nitzschia_inconspicua.faa
-Seminavis_robusta.faa
-Phaeodactylum_tricornutum.faa
-Thalassiosira_pseudonana.faa
-```
-
----
-
-## OrthoFinder comparative genomics
-
-Protein orthology was inferred using OrthoFinder v3.1.5.
-
-The analysis used:
-
-```text
-DIAMOND for protein similarity searches
-FAMSA for multiple sequence alignment
-FastTree for gene tree inference
-```
-
-The comparison included:
-
-```text
-111,639 proteins
-5 diatom proteomes
-```
-
-OrthoFinder assigned:
-
-```text
-99,813 proteins to orthogroups
-16,157 orthogroups
-89.4% of proteins assigned
-4,914 orthogroups represented in all five proteomes
-```
-
-The main OrthoFinder output directory is:
-
-```text
-/work/ebg_lab/eb/diatom_consortia/comparative_genomics/
-orthofinder_results/DL_5species_orthofinder_v3/Results_Sep09/
-```
-
-For each Deer Lake gene, the corresponding orthogroup was examined for the presence of proteins from NI, SR, PT, and TP.
-
-A reference species was recorded as `yes` when the Deer Lake protein belonged to an OrthoFinder orthogroup containing at least one protein from that species.
-
-Therefore, these fields describe **orthogroup sharing** and should not be interpreted as literal genome wide gene presence or absence.
-
----
-
-## Deer Lake genes shared with reference diatoms
-
-The final Deer Lake proteome contains:
-
-```text
-14,979 genes
-```
-
-The numbers of Deer Lake genes belonging to orthogroups containing each reference species are:
-
-| Reference diatom | Deer Lake genes in shared orthogroups |
+| Comparator | Deer Lake genes |
 | --- | ---: |
-| *Nitzschia inconspicua* | 10,163 |
-| *Seminavis robusta* | 9,952 |
-| *Phaeodactylum tricornutum* | 7,973 |
-| *Thalassiosira pseudonana* | 7,569 |
+| NI | 10,154 |
+| SR | 9,952 |
+| PT | 7,966 |
+| TP | 7,542 |
 
-These categories are not mutually exclusive because a Deer Lake gene can belong to an orthogroup containing several reference species.
-
----
-
-## Final comparative gene table
-The main gene level table for downstream comparative analysis is:
-```text
-Orthogroups/DL_diatom_FINAL_gene_table_OrthoFinder_PT_TP_NI_SR.tsv
-```
-The table contains:
-```text
-14,979 Deer Lake nuclear representative genes
-14,980 lines including the header
-```
-Columns:
-```text
-gene_id
-contig_id
-diatom_compartment
-diatom_gene_length_bp
-functional_annotation
-diatom_Average_TPM
-present_in_Thalassiosira_pseudonana
-present_in_Phaeodactylum_tricornutum
-present_in_Nitzschia_inconspicua
-present_in_Seminavis_robusta
-```
-Column interpretation:
-```text
-gene_id
-  Representative BRAKER4 transcript ID for the Deer Lake gene.
-
-contig_id
-  Nuclear Deer Lake contig containing the gene model.
-
-diatom_compartment
-  Genomic compartment assignment.
-
-diatom_gene_length_bp
-  Gene length calculated from BRAKER4 coordinates.
-
-functional_annotation
-  Functional annotation derived from the integrated Swiss-Prot,
-  Bacillariophyta UniProtKB, InterProScan, and AntiFam workflow.
-
-diatom_Average_TPM
-  Average transcript expression value transferred through the
-  selected TransDecoder ORF to BRAKER4 mapping.
-
-present_in_Thalassiosira_pseudonana
-  yes when the Deer Lake protein belongs to an orthogroup containing
-  at least one T. pseudonana protein.
-
-present_in_Phaeodactylum_tricornutum
-  yes when the Deer Lake protein belongs to an orthogroup containing
-  at least one P. tricornutum protein.
-
-present_in_Nitzschia_inconspicua
-  yes when the Deer Lake protein belongs to an orthogroup containing
-  at least one N. inconspicua protein.
-
-present_in_Seminavis_robusta
-  yes when the Deer Lake protein belongs to an orthogroup containing
-  at least one S. robusta protein.
-```
-Blank `diatom_Average_TPM` fields are retained as missing expression values rather than being converted to zero.
-
-This table is the primary Deer Lake comparative gene table used for pathway inspection and downstream biological interpretation.
-
----
-## Hi C analysis
-
-Hi C reads were mapped to the polished whole assembly to assess contig representation and proximity ligation links among assembled contigs.
-
-The polished whole metagenomic assembly was used rather than the nuclear enriched subset because the Hi C library was generated from the complete diatom associated consortium.
-
-The YaHS scaffolding analysis was treated as exploratory. The final Hi C results are interpreted primarily as contig level contact evidence rather than as a chromosome scale scaffolded genome.
-
-Final network outputs include:
-
-```text
-hic_contig_network_all_primary_pairs.gexf
-hic_contig_network_all_primary_pairs.graphml
-```
-
-These files can be opened in Gephi for visualization and analysis of contacts among nuclear, organelle associated, bacterial, and mixed contigs.
+These values represent orthogroup sharing. They should not be interpreted as one to one orthology, definitive biological absence, or gene family expansion.
 
 ---
 
-## Custom Python scripts
+## Repository scripts
 
-Custom Python scripts are stored in the `scripts/` directory. Shell commands and SLURM workflows are documented directly in `data_analysis.md`.
+The original repository contains scripts `01` through `22`. This update adds:
 
 ```text
 scripts/
-├── 01_classify_metaeuk_contigs.py
-├── 02_make_swissprot_best_hits.py
-├── 03_make_bacillariophyta_best_hits.py
-├── 04_summarize_interproscan.py
-├── 05_merge_functional_annotation_layers.py
-├── 06_merge_phaeodactylum_blast_hits.py
-├── 07_merge_thalassiosira_blast_hits.py
-├── 08_add_BRAKER_lengths_clean.py
-├── 09_make_best_ORF_to_BRAKER_mapping_clean.py
-├── 10_add_ONLY_Average_TPM_clean.py
-├── 11_make_FINAL_clean_BRAKER_isoform_table.py
-├── 12_make_boss_review_gene_table_PTredo.py
-├── 13_add_thalassiosira_yes_no.py
-├── 14_make_hic_network_files.py
-├── 15_make_hic_primary_mapq30_pid95_tables.py
-├── 16_make_hic_pair_type_tables.py
-├── 17_make_hic_simple_mixed_read_table.py
-├── 18_make_DL_nuclear_representative_proteome.py
-├── 19_calculate_DL_CDS_repeat_overlap.py
-├── 20_classify_DL_TE_candidates.py
-├── 21_prepare_reference_proteome.py
-└── 22_make_final_orthofinder_gene_table.py
+├── 23_prepare_DL_BLASTN_query.py
+├── 24_build_BLASTN_master_table.py
+├── 25_make_BLASTN_subsets.py
+├── 26_plot_BLASTN_TPM_panelA.py
+├── 27_make_HiC_undirected_min2_edges.py
+└── 28_plot_HiC_whole_assembly_network.py
 ```
 
-The scripts relevant to the final comparative analysis are:
+SLURM workflows are stored as plain text files in:
 
 ```text
-18_make_DL_nuclear_representative_proteome.py
-  Generates one representative nuclear Deer Lake protein per gene.
+slurm/
+└── 23_run_four_genome_dcmegablast_SLURM.txt
+```
 
-19_calculate_DL_CDS_repeat_overlap.py
-  Calculates overlap between representative Deer Lake CDS regions
-  and RepeatMasker annotations.
+The complete command history, paths, filtering logic, output counts, and interpretation notes are documented in [`data_analysis.md`](data_analysis.md).
 
-20_classify_DL_TE_candidates.py
-  Identifies high confidence TE associated protein models using
-  repeat overlap and functional annotation.
+---
 
-21_prepare_reference_proteome.py
-  Standardizes reference protein sets for comparative analysis.
+## Software used in the added analyses
 
-22_make_final_orthofinder_gene_table.py
-  Combines Deer Lake gene metadata, Average_TPM, and OrthoFinder
-  orthogroup membership to generate the final 14,979 gene table
-  containing PT, TP, NI, and SR comparison fields.
+| Analysis | Software |
+| --- | --- |
+| Four genome nucleotide comparison | BLAST+, Python, pandas |
+| Expression figure | pandas, NumPy, SciPy, Matplotlib |
+| Hi C edge processing | Python, pandas |
+| Hi C network visualization | pandas, NumPy, NetworkX, Matplotlib |
+
+Laptop plotting dependencies can be installed with:
+
+```bash
+pip install -r requirements_laptop.txt
 ```
 
 ---
 
-## Interpretation of comparative fields
-The four final comparison columns are based on OrthoFinder protein orthogroups.
-For example:
+## Interpretation notes
 
-```text
-present_in_Nitzschia_inconspicua = yes
-```
-means that the Deer Lake protein belongs to an orthogroup containing at least one *N. inconspicua* protein.
-
-It does not necessarily indicate a one to one orthologue, identical gene function, or identical copy number.
-
-Similarly:
-```text
-no
-```
-means that no protein from that reference proteome was assigned to the same orthogroup. It should not be interpreted as definitive biological absence because genome assembly, annotation quality, sequence divergence, and proteome completeness can affect orthogroup recovery.
-
----
-
-## Detailed workflow
-The complete workflow, including commands, SLURM scripts, software environments, input files, intermediate outputs, quality control steps, and custom Python scripts, is documented in:
-
-[`data_analysis.md`](data_analysis.md)
+- `Deer Lake only` is a figure label for genes with no detectable BLASTN hit to the four selected reference genomes under the stated search criteria.
+- BLASTN non detection is not proof that a homolog is biologically absent.
+- The four comparator hit groups overlap.
+- Blank Average_TPM values are missing data and are not converted to zero.
+- True TPM values of zero are retained and can be plotted as `log10(TPM + 1) = 0`.
+- Hi C edges represent proximity ligation support under the filtering criteria used and should not be interpreted as direct ecological interaction or mutualism.
+- Organelle contigs are separate DNA molecules and are not expected to scaffold automatically into the nuclear contact network.
+- Candidate mitochondrial contig assignments remain provisional.
