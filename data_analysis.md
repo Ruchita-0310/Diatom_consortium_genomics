@@ -1,7 +1,7 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The pipeline combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses using 18S rRNA, plastid 16S rRNA, and rbcL, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware nuclear proteome curation, and comparative protein orthology analysis using OrthoFinder.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The current workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware gene curation, four genome nucleotide comparison, secondary protein orthology analysis, and Hi C contact network analysis.
 
-The final OrthoFinder comparison included the Deer Lake diatom and four reference diatoms: *Nitzschia inconspicua*, *Seminavis robusta*, *Phaeodactylum tricornutum*, and *Thalassiosira pseudonana*. Earlier whole genome BLASTN comparisons with *P. tricornutum* and *T. pseudonana* are retained in the repository as exploratory nucleotide similarity analyses and are not interpreted as orthology.
+The current manuscript level comparative gene analysis uses a repeat and plastid quality controlled set of 14,941 Deer Lake nuclear genes and compares them by `dc-megablast` with *Nitzschia inconspicua*, *Seminavis robusta*, *Phaeodactylum tricornutum*, and *Thalassiosira pseudonana*. OrthoFinder is retained as a secondary protein level analysis. Historical PT and TP pairwise BLASTN sections remain below for provenance, but the final four comparator BLASTN workflow is documented in Section 21.
 
 ---
 
@@ -21,39 +21,39 @@ MetaBAT2 binning
    ↓
 CheckM2 + GTDB-Tk + MetaEuk contig classification
    ↓
-Organelle identification using reference chloroplast and mitochondrial genomes
+Organelle identification
    ↓
-Phylogenetic analyses using 18S rRNA, plastid 16S rRNA, and rbcL
+18S rRNA, plastid 16S rRNA, and rbcL phylogenies
    ↓
-BRAKER4 ET gene annotation using RNA-seq evidence
+BRAKER4 ET annotation using RNA-seq evidence
    ↓
-Nuclear-enriched genome generation
+Nuclear enriched genome generation
    ↓
-Functional annotation with Swiss-Prot, Bacillariophyta UniProtKB, InterProScan, and AntiFam
+Functional annotation + Average_TPM integration
    ↓
-Expression integration using best TransDecoder ORF-to-BRAKER4 mappings and Average_TPM only
+Representative nuclear gene curation
    ↓
-Exploratory Phaeodactylum tricornutum and Thalassiosira pseudonana whole-genome BLASTN screens
+RepeatModeler + RepeatMasker
    ↓
-Final clean BRAKER4 isoform-level gene table for pathway curation
+Removal of 38 high confidence TE associated models
    ↓
-Nuclear representative proteome curation
+Plastid derived contig QC
    ↓
-RepeatModeler and RepeatMasker repeat analysis
+Final 14,941 gene nucleotide query
    ↓
-Targeted removal of high-confidence TE-derived protein models
+Four genome dc-megablast: NI, SR, PT, TP
    ↓
-Reference proteome standardization for PT, TP, NI, and SR
+Master BLASTN + Average_TPM table
    ↓
-Five-species protein orthology with OrthoFinder
+BLASTN unmatched and expression subsets
    ↓
-Final 14,979-gene comparative table with Average_TPM and four orthogroup-sharing fields
+Secondary OrthoFinder protein comparison
    ↓
-Hi-C read mapping to polished whole assembly
+Hi C mapping to polished whole assembly
    ↓
-Contig-level Hi-C representation summary
+High confidence contig contact processing
    ↓
-Hi-C proximal-ligation contact network
+Whole assembly network visualization
 ```
 ---
 
@@ -104,10 +104,16 @@ scripts/
 ├── 19_calculate_DL_CDS_repeat_overlap.py
 ├── 20_classify_DL_TE_candidates.py
 ├── 21_prepare_reference_proteome.py
-└── 22_make_final_orthofinder_gene_table.py
+├── 22_make_final_orthofinder_gene_table.py
+├── 23_prepare_DL_BLASTN_query.py
+├── 24_build_BLASTN_master_table.py
+├── 25_make_BLASTN_subsets.py
+├── 26_plot_BLASTN_TPM_panelA.py
+├── 27_make_HiC_undirected_min2_edges.py
+└── 28_plot_HiC_whole_assembly_network.py
 ```
 
-The scripts are numbered sequentially from `01` to `22`. Shell and SLURM workflows remain documented directly in the relevant README sections, while custom Python logic is stored in `scripts/`.
+The scripts are numbered sequentially from `01` to `28`. Shell and SLURM workflows remain documented directly in the relevant README sections, while custom Python logic is stored in `scripts/`.
 
 Script purposes:
 
@@ -176,7 +182,25 @@ Script purposes:
   Creates one representative protein per NCBI locus tag and optionally excludes organelle contigs; used for PT, TP, SR, and NI preparation.
 
 22_make_final_orthofinder_gene_table.py
-  Builds the final 14,979-row Deer Lake table with functional annotation, Average_TPM, and four OrthoFinder orthogroup-sharing yes/no fields.
+  Builds the historical OrthoFinder gene table with functional annotation, Average_TPM, and four orthogroup-sharing fields.
+
+23_prepare_DL_BLASTN_query.py
+  Extracts the final nucleotide gene query using gene roots represented in the repeat and plastid quality controlled Deer Lake protein set.
+
+24_build_BLASTN_master_table.py
+  Collapses four dc-megablast result files to one best alignment per Deer Lake gene per comparator and merges annotation, compartment, and Average_TPM metadata.
+
+25_make_BLASTN_subsets.py
+  Writes no-comparator-hit, expressed no-hit, and expressed annotated no-hit subsets without applying a gene-length cutoff.
+
+26_plot_BLASTN_TPM_panelA.py
+  Generates the color blind aware expression violin plot used for Panel A.
+
+27_make_HiC_undirected_min2_edges.py
+  Removes self contacts, retains oriented rows with at least two Hi C read pairs, and collapses reciprocal contig pairs to unique undirected edges.
+
+28_plot_HiC_whole_assembly_network.py
+  Plots all assembly contigs, the high confidence connected network, isolated contigs, and highlighted organelle-associated contigs.
 ```
 ---
 # Analysis workflow
@@ -1899,7 +1923,7 @@ braker.18_diatom_nuclear_only.v1.gff3
 ---
 
 <details>
-<summary><strong>16. Pairwise genome comparison with <em>Phaeodactylum tricornutum</em></strong> - BLASTN, GFF3, and bedtools</summary>
+<summary><strong>16. Historical pairwise genome comparison with <em>Phaeodactylum tricornutum</em></strong> - BLASTN, GFF3, and bedtools; superseded by Section 21</summary>
 
 A pairwise genome comparison was performed between the BRAKER4-annotated diatom genome and the reference genome of *Phaeodactylum tricornutum*. This analysis was used as a nucleotide-level similarity screen and was not treated as a full orthology analysis. Raw BLASTN hits were retained without filtering and then linked to overlapping gene models in both genomes.
 ### 16.1 Working directory and input files
@@ -2204,7 +2228,7 @@ This analysis provides a gene-linked nucleotide similarity table between the dia
 ---
 
 <details>
-<summary><strong>17. Pairwise genome comparison with <em>Thalassiosira pseudonana</em></strong> - BLASTN, GFF3, bedtools, Python, and SLURM</summary>
+<summary><strong>17. Historical pairwise genome comparison with <em>Thalassiosira pseudonana</em></strong> - BLASTN, GFF3, bedtools, Python, and SLURM; superseded by Section 21</summary>
 
 A second whole-genome nucleotide comparison was performed using *Thalassiosira pseudonana* CCMP1335. The analysis follows the same logic as the *Phaeodactylum tricornutum* comparison: the complete reference genome is used as the BLASTN query, the Deer Lake diatom genome is used as the nucleotide database, all reported alignments are retained, and overlapping gene models are assigned on both genomes.
 
@@ -2911,7 +2935,7 @@ The review table is intended for manual pathway curation and biological interpre
 ---
 
 <details>
-<summary><strong>19. Repeat aware nuclear proteome curation and five species protein orthology</strong> - RepeatModeler, RepeatMasker, OrthoFinder, DIAMOND, FAMSA, FastTree, seqkit, and Python</summary>
+<summary><strong>19. Repeat aware nuclear proteome curation and secondary five species protein orthology</strong> - RepeatModeler, RepeatMasker, OrthoFinder, DIAMOND, FAMSA, FastTree, seqkit, and Python</summary>
 
 This section describes the final protein comparison used to replace the earlier nucleotide similarity screen as the primary comparative analysis. The workflow first generated a nonredundant Deer Lake nuclear representative proteome, screened predicted coding sequences against a de novo repeat library, removed a small set of high confidence transposable element derived models, standardized four reference diatom proteomes, and then inferred orthogroups with OrthoFinder.
 
@@ -3535,7 +3559,53 @@ comparative_genomics/
             └── Comparative_Genomics_Statistics/
 ```
 
-The earlier PT and TP BLASTN comparisons remain useful as nucleotide similarity screens, but the OrthoFinder table is the primary protein based comparative gene table for downstream interpretation.
+The OrthoFinder analysis is retained as a secondary protein level comparison. The final four comparator nucleotide comparison used for the current manuscript analysis is documented in Section 21.
+
+### 19.14 Plastid quality control and corrected OrthoFinder rerun
+
+Inspection of photosynthesis related models identified residual plastid derived contigs in the nuclear enriched assembly. Four protein-bearing contigs were removed from the final Deer Lake nuclear query:
+
+```text
+contig_475
+contig_4813
+contig_5686
+contig_5702
+```
+
+These contigs contained 38 retained representative proteins in total. After removal, the corrected Deer Lake protein set contained:
+
+```text
+14,941 proteins
+```
+
+Corrected protein FASTA:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/comparative_genomics/00_DL_reference/
+DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_plastidQC.faa
+```
+
+The corrected OrthoFinder rerun is located at:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/comparative_genomics/orthofinder_results/
+DL_5species_orthofinder_v3_plastidQC/Results_Sep10
+```
+
+Corrected Deer Lake summary:
+
+```text
+Input proteins:                    14,941
+Assigned to orthogroups:          12,677  (84.8%)
+Unassigned:                         2,264  (15.2%)
+DL-containing orthogroups:          8,970
+Shared with N. inconspicua:        10,154
+Shared with S. robusta:             9,952
+Shared with P. tricornutum:         7,966
+Shared with T. pseudonana:          7,542
+```
+
+No mitochondrial based filtering was applied to the nuclear gene set because the candidate mitochondrial contigs were not considered reliable enough to justify gene removal.
 
 </details>
 
@@ -4156,5 +4226,442 @@ Hi-C reads mapped to 4,010 of 4,925 contigs in the polished whole assembly, corr
 Inter-contig proximity-ligation contacts were extracted from primary mapped Hi-C read pairs without applying a MAPQ cutoff. The final all-primary contig-contact network contained 3,770 contig nodes and 75,703 inter-contig Hi-C links.
 
 A second high-confidence separate-read analysis was then used to identify mixed diatom-bacterial Hi-C read pairs. Read 1 and read 2 were mapped independently to the polished whole assembly, filtered for primary MAPQ >= 30 and percent identity >= 95 alignments, joined by read ID, and classified using the diatom draft genome as the diatom contig reference. This produced 341 high-confidence mixed diatom-bacterial Hi-C read pairs, represented as 682 read-level rows in the final simplified table.
+
+</details>
+
+---
+
+<details>
+<summary><strong>21. Final four comparator BLASTN redo with repeat, plastid QC, annotation, and Average_TPM</strong> - BLAST+, Python, pandas, and SLURM</summary>
+
+This section supersedes the earlier PT only and TP only pairwise nucleotide screens for the current manuscript analysis. The goal was to apply the same nucleotide search procedure to all four reference diatom genomes while retaining every curated Deer Lake query gene in a single master table.
+
+### 21.1 Final Deer Lake nucleotide query
+
+The original clean Deer Lake nucleotide gene FASTA contained:
+
+```text
+15,102 BRAKER4 gene sequences
+```
+
+Input nucleotide gene FASTA:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/thalassiosira_to_diatom_blastn_redo/00_inputs/
+diatom_genes.clean.fasta
+```
+
+The final query was restricted to gene roots represented in the repeat and plastid quality controlled Deer Lake protein set:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/comparative_genomics/00_DL_reference/
+DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_plastidQC.faa
+```
+
+Run:
+
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/comparative_genomics/blastn_redo
+
+python scripts/23_prepare_DL_BLASTN_query.py \
+    --gene-fasta /work/ebg_lab/eb/diatom_consortia/thalassiosira_to_diatom_blastn_redo/00_inputs/diatom_genes.clean.fasta \
+    --final-protein-fasta /work/ebg_lab/eb/diatom_consortia/comparative_genomics/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_plastidQC.faa \
+    --out-fasta 00_inputs/DL_final_nuclear_genes_repeat_TE_plastid_clean.fasta \
+    --roots-out 00_inputs/DL_final_gene_roots.txt \
+    --expected 14941
+```
+
+Final query:
+
+```text
+00_inputs/DL_final_nuclear_genes_repeat_TE_plastid_clean.fasta
+```
+
+Final number of Deer Lake query genes:
+
+```text
+14,941
+```
+
+The query is repeat/TE filtered and plastid quality controlled. It should not be described as mitochondrial cleaned.
+
+### 21.2 Comparator genome FASTA files
+
+```text
+Nitzschia inconspicua
+/home/ruchita.solanki/databases/nitzschia_inconspicua/
+GCA_019154785.2_GAI293_CANU_175m_combined/
+Nitzschia_inconspicua_GCA_019154785.2_genomic.fna
+
+Seminavis robusta
+/home/ruchita.solanki/databases/seminavis_robusta/D6/
+Seminavis_robusta_GCA_903772945.1_genomic.fna
+
+Phaeodactylum tricornutum
+/work/ebg_lab/eb/diatom_consortia/phaeodactylum_to_diatom_blastn_redo/00_inputs/
+phaeodactylum_genome.fna
+
+Thalassiosira pseudonana
+/home/ruchita.solanki/thalassiosira_pseudonana/
+GCF_000149405.2_ASM14940v2/
+Thalassiosira_pseudonana_ASM14940v2_GCF_000149405.2_genomic.fna
+```
+
+### 21.3 BLAST database construction and four comparator search
+
+The reusable SLURM script is saved as:
+
+```text
+slurm/23_run_four_genome_dcmegablast_SLURM.txt
+```
+
+The search settings were identical for all four comparators:
+
+```text
+BLAST task:        dc-megablast
+E value:           1e-10
+Threads:           32
+Additional fixed identity cutoff: none
+Additional fixed coverage cutoff: none
+```
+
+BLAST output format:
+
+```text
+qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen qcovs
+```
+
+Raw output files:
+
+```text
+02_blastn_raw/DL_vs_NI.dcmegablast.tsv
+02_blastn_raw/DL_vs_SR.dcmegablast.tsv
+02_blastn_raw/DL_vs_PT.dcmegablast.tsv
+02_blastn_raw/DL_vs_TP.dcmegablast.tsv
+```
+
+Observed raw alignment counts:
+
+```text
+NI: 27,211
+SR: 12,168
+PT:  7,915
+TP:  4,817
+Total: 52,111
+```
+
+These values are alignment counts, not unique Deer Lake gene counts.
+
+### 21.4 Master gene table
+
+The metadata map used for Deer Lake annotation and expression was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/comparative_genomics/00_DL_reference/
+DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_map.tsv
+```
+
+The map contains gene root, representative transcript ID, contig ID, compartment, protein length, Average_TPM, and functional annotation. Only roots present in the final 14,941 gene query are retained by the master-table script.
+
+Run:
+
+```bash
+python scripts/24_build_BLASTN_master_table.py \
+    --query-fasta 00_inputs/DL_final_nuclear_genes_repeat_TE_plastid_clean.fasta \
+    --metadata-map /work/ebg_lab/eb/diatom_consortia/comparative_genomics/00_DL_reference/DL_diatom_FINAL_nuclear_representative_proteome_TEfiltered_map.tsv \
+    --ni 02_blastn_raw/DL_vs_NI.dcmegablast.tsv \
+    --sr 02_blastn_raw/DL_vs_SR.dcmegablast.tsv \
+    --pt 02_blastn_raw/DL_vs_PT.dcmegablast.tsv \
+    --tp 02_blastn_raw/DL_vs_TP.dcmegablast.tsv \
+    --out DL_14941_genes_BLASTN_NI_SR_PT_TP_with_TPM_compartment.tsv \
+    --expected 14941
+```
+
+For each comparator, one best alignment is retained per query gene by highest bitscore, then lower E value, higher query coverage, higher percent identity, and longer alignment as deterministic tie breakers.
+
+The final master table retains all 14,941 query genes, including genes without a BLASTN hit.
+
+Core metadata columns:
+
+```text
+gene_root
+gene_id
+contig_id
+diatom_compartment
+gene_length_bp
+functional_annotation
+diatom_Average_TPM
+```
+
+Each comparator contributes:
+
+```text
+*_hit
+*_subject
+*_pident
+*_alignment_length
+*_qcov
+*_evalue
+*_bitscore
+```
+
+A `yes` hit means at least one `dc-megablast` alignment was returned at E <= 1e-10. No additional identity or query coverage threshold is used to delete genes from the master table.
+
+Observed unique Deer Lake gene counts:
+
+```text
+NI hit:                         5,767
+SR hit:                         4,273
+PT hit:                         3,799
+TP hit:                         2,636
+Hit in at least one comparator: 6,429
+No hit in any comparator:       8,512
+```
+
+### 21.5 Expression values and unmatched subsets
+
+Average_TPM availability across the 14,941 gene table:
+
+```text
+TPM value available: 11,092
+TPM > 0:             10,907
+TPM = 0:                185
+```
+
+Generate the main BLASTN unmatched subsets with:
+
+```bash
+python scripts/25_make_BLASTN_subsets.py \
+    --master DL_14941_genes_BLASTN_NI_SR_PT_TP_with_TPM_compartment.tsv \
+    --query-fasta 00_inputs/DL_final_nuclear_genes_repeat_TE_plastid_clean.fasta \
+    --out-prefix DL
+```
+
+Expected key outputs:
+
+```text
+DL_no_comparator_hit.tsv
+DL_no_comparator_hit_gene_roots.txt
+DL_no_comparator_hit_genes.fasta
+DL_no_comparator_hit_expressed_sorted_by_TPM.tsv
+DL_unmatched_expressed_annotated_sorted_TPM.tsv
+```
+
+Observed counts:
+
+```text
+No comparator hit:                                8,512 genes
+No comparator hit + TPM > 0:                     5,332 genes
+No comparator hit + TPM > 0 + informative annotation: 3,259 genes
+```
+
+No gene length cutoff is applied to these final subsets. Gene length remains a descriptive field only.
+
+Annotation labels that contain taxonomic or organism names should be interpreted as reference or domain based annotation labels unless independent evidence supports that biological identity.
+
+### 21.6 Panel A expression plot
+
+The plotting script is:
+
+```text
+scripts/26_plot_BLASTN_TPM_panelA.py
+```
+
+Laptop dependencies:
+
+```bash
+pip install pandas numpy matplotlib scipy
+```
+
+Run:
+
+```bash
+python scripts/26_plot_BLASTN_TPM_panelA.py \
+    --input DL_14941_genes_BLASTN_NI_SR_PT_TP_with_TPM_compartment.tsv \
+    --out-prefix PanelA_BLASTN_TPM
+```
+
+The five plotted groups are:
+
+```text
+Deer Lake only
+Shared with N. inconspicua
+Shared with S. robusta
+Shared with P. tricornutum
+Shared with T. pseudonana
+```
+
+`Deer Lake only` is a compact figure label for genes with no detectable BLASTN hit to any of the four comparator genomes under this search. It should not be interpreted as proof of lineage specificity.
+
+The shared comparator groups overlap because a Deer Lake gene may have a BLASTN hit to multiple comparator genomes.
+
+Expression is displayed as:
+
+```text
+log10(Average TPM + 1)
+```
+
+True TPM values of zero are retained. Blank TPM fields are excluded because they represent missing expression values rather than zero expression.
+
+### 21.7 Interpretation
+
+Preferred manuscript language:
+
+> Genes classified as Deer Lake only had no detectable nucleotide similarity to *N. inconspicua*, *S. robusta*, *P. tricornutum*, or *T. pseudonana* under the dc-megablast search criteria used.
+
+Avoid calling these genes definitively unique, lineage specific, or biologically absent from the four references. Nucleotide search sensitivity, genome assembly quality, annotation completeness, sequence divergence, and query length can affect detection.
+
+</details>
+
+---
+
+<details>
+<summary><strong>22. High confidence whole assembly Hi C network visualization</strong> - pandas, NetworkX, NumPy, and Matplotlib</summary>
+
+The final network visualization uses the high confidence separate-read Hi C tables generated in Section 20. The purpose of this figure is to show all contigs in the polished consortium assembly while distinguishing contigs that participate in retained inter-contig Hi C links from contigs that do not.
+
+### 22.1 Input tables
+
+Working directory:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/hic_bwa_separate_reads/03_tables
+```
+
+Input contact table:
+
+```text
+HiC_contig_pair_contacts_MAPQ30_PID95.tsv
+```
+
+Columns:
+
+```text
+forward_contig_id
+reverse_contig_id
+forward_contig_type
+reverse_contig_type
+pair_type_code
+pair_type
+read_pair_count
+```
+
+Whole assembly contig type map:
+
+```text
+whole_assembly_contig_type_map.tsv
+```
+
+The type map contains 4,925 assembly contigs plus one header line.
+
+### 22.2 Build the undirected high confidence edge table
+
+The original contact table contained self contacts and orientation-specific forward/reverse contig pairs. For the plotting table:
+
+1. self contacts were removed;
+2. orientation-specific rows with `read_pair_count >= 2` were retained;
+3. each contig pair was converted to a canonical undirected pair; and
+4. reciprocal entries were summed.
+
+Run:
+
+```bash
+python scripts/27_make_HiC_undirected_min2_edges.py \
+    --input HiC_contig_pair_contacts_MAPQ30_PID95.tsv \
+    --output HiC_network_edges_min2_undirected.tsv \
+    --min-support 2
+```
+
+Observed filtering summary:
+
+```text
+Non-self contig-pair rows:                    5,146
+Non-self rows with >=2 read pairs:              576
+Unique undirected edges after collapsing:        471
+Unique contigs in retained edges:                487
+Minimum retained edge weight:                      2
+Maximum retained edge weight:                    194
+Median retained edge weight:                       2
+```
+
+The threshold is applied before reciprocal orientation collapsing to reproduce the final analysis exactly.
+
+### 22.3 Plot all assembly contigs
+
+The plotting script is:
+
+```text
+scripts/28_plot_HiC_whole_assembly_network.py
+```
+
+Laptop dependencies:
+
+```bash
+pip install pandas numpy networkx matplotlib
+```
+
+Run:
+
+```bash
+python scripts/28_plot_HiC_whole_assembly_network.py \
+    --edges HiC_network_edges_min2_undirected.tsv \
+    --types whole_assembly_contig_type_map.tsv \
+    --out-prefix HiC_whole_assembly_network
+```
+
+The plot contains all 4,925 assembly contigs:
+
+```text
+Connected contigs:      487
+Isolated contigs:     4,438
+Total:                4,925
+```
+
+The spring layout is calculated only for the connected contigs. Isolated contigs are placed in concentric rings around the connected network so that their presence is visible without implying spatial relationships among them.
+
+Node colors use a color blind aware palette:
+
+```text
+Diatom contigs:       blue
+Bacterial contigs:    orange
+```
+
+Mixed diatom-bacterial edges are drawn more prominently than within-group edges, but a Hi C edge is interpreted only as proximity ligation support under the filtering criteria used. It is not evidence by itself for mutualism or a direct ecological interaction.
+
+### 22.4 Organelle associated contigs highlighted in the figure
+
+Plastid genome associated contigs:
+
+```text
+contig_1443
+contig_4315
+```
+
+Candidate mitochondrial contigs:
+
+```text
+contig_5628
+contig_1647
+```
+
+The plotting script highlights these four contigs with larger star symbols. The mitochondrial contigs are labelled as candidates because their genome assignment remains uncertain and was not used to filter the final nuclear gene set.
+
+The absence of a retained edge between an organelle contig and the nuclear network does not imply that the organelle never contacts the nucleus. Nuclear, plastid, and mitochondrial DNA are physically separate molecules, and the final network additionally excludes self contacts and weak inter-contig contacts below the selected support threshold.
+
+### 22.5 Inspect raw organelle contact patterns
+
+Before interpreting organelle placement, inspect all raw contact rows involving the highlighted contigs:
+
+```bash
+awk -F'\t' '
+NR==1 ||
+$1=="contig_1443" || $2=="contig_1443" ||
+$1=="contig_4315" || $2=="contig_4315" ||
+$1=="contig_5628" || $2=="contig_5628" ||
+$1=="contig_1647" || $2=="contig_1647"
+' HiC_contig_pair_contacts_MAPQ30_PID95.tsv | column -t
+```
+
+This allows self contacts, weak contacts removed by the network threshold, diatom contacts, and bacterial contacts to be evaluated separately.
 
 </details>
