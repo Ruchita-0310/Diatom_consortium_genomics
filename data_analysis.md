@@ -1,7 +1,9 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The current workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware gene curation, four genome nucleotide comparison, secondary protein orthology analysis, and Hi C contact network analysis.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The current workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware gene curation, four genome nucleotide comparison, secondary protein orthology analysis, ORF level comparative metatranscriptomics, and Hi C contact network analysis.
 
 The current manuscript level comparative gene analysis uses a repeat and plastid quality controlled set of 14,941 Deer Lake nuclear genes and compares them by `dc-megablast` with *Nitzschia inconspicua*, *Seminavis robusta*, *Phaeodactylum tricornutum*, and *Thalassiosira pseudonana*. OrthoFinder is retained as a secondary protein level analysis. Historical PT and TP pairwise BLASTN sections remain below for provenance, but the final four comparator BLASTN workflow is documented in Section 21.
+
+A separate ORF level comparative metatranscriptomic analysis was subsequently performed from the Deer Lake **nf-core/metatdenovo** output. This analysis uses expressed TransDecoder ORFs, reciprocal best BLASTP hits against the same four reference diatoms, a within Deer Lake expression percentile, and integrated KOfam, EggNOG, and direct Pfam/HMMER annotation. The new workflow is documented in Section 23 and is complementary to, rather than a replacement for, the 14,941 nuclear gene BLASTN analysis.
 
 ---
 
@@ -49,6 +51,12 @@ BLASTN unmatched and expression subsets
    ↓
 Secondary OrthoFinder protein comparison
    ↓
+Expressed Deer Lake TransDecoder ORF BLASTP RBH comparison
+   ↓
+Deer Lake expression percentile + KOfam/EggNOG/Pfam integration
+   ↓
+Manual curation of six functional systems
+   ↓
 Hi C mapping to polished whole assembly
    ↓
 High confidence contig contact processing
@@ -70,6 +78,7 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Organelle identification         | MetaQUAST, minimap2, bedtools, seqkit                                                                                                   |
 | Phylogenetics                    | Barrnap, BLAST+, bedtools, seqkit, Clustal Omega, TrimAl, IQ-TREE 2, Python                                                            |
 | Transcriptomics                  | Nextflow, nf-core/metatdenovo, TransDecoder, Barrnap, STAR                                                                              |
+| Comparative metatranscriptomics    | BLAST+, KOfam, EggNOG mapper, HMMER/Pfam, Python, pandas, Matplotlib                                                                    |
 | Genome annotation                | BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, STAR, BUSCO/compleasm                                                                           |
 | Functional annotation            | DIAMOND, UniProtKB/Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, Pfam, PANTHER, Gene3D, CDD, SMART, SUPERFAMILY, ProSite, Python |
 | Expression integration           | DIAMOND, Python, pandas, TransDecoder ORFs, Average_TPM table                                                                           |
@@ -110,10 +119,20 @@ scripts/
 ├── 25_make_BLASTN_subsets.py
 ├── 26_plot_BLASTN_TPM_panelA.py
 ├── 27_make_HiC_undirected_min2_edges.py
-└── 28_plot_HiC_whole_assembly_network.py
+├── 28_plot_HiC_whole_assembly_network.py
+├── 29_prepare_DL_expressed_ORFs.py
+├── 30_extract_unique_top_RBH.py
+├── 31_build_5species_RBH_expression_master.py
+├── 32_add_DL_expression_percentile.py
+├── 33_integrate_transcriptome_annotations.py
+├── 34_extract_six_system_candidates.py
+├── 35_make_curated_6systems_expression_conservation.py
+├── 36_make_final_24genes_expression_conservation.py
+├── 37_make_final_30genes_expression_conservation.py
+└── 38_plot_DL_expression_RBH_matrix.py
 ```
 
-The scripts are numbered sequentially from `01` to `28`. Shell and SLURM workflows remain documented directly in the relevant README sections, while custom Python logic is stored in `scripts/`.
+The scripts are numbered sequentially from `01` to `38`. Custom Python logic is stored in `scripts/`. The comparative metatranscriptomics BLAST jobs added in Section 23 are stored as plain text SLURM files in `slurm/`.
 
 Script purposes:
 
@@ -201,6 +220,36 @@ Script purposes:
 
 28_plot_HiC_whole_assembly_network.py
   Plots all assembly contigs, the high confidence connected network, isolated contigs, and highlighted organelle-associated contigs.
+
+29_prepare_DL_expressed_ORFs.py
+  Matches nf-core/metatdenovo TransDecoder ORFs to the ORF level TPM table, calculates Average_TPM, and writes the expressed Deer Lake peptide set.
+
+30_extract_unique_top_RBH.py
+  Identifies unique top BLASTP hits in both directions and writes reciprocal best hit pairs; top bitscore ties are treated as ambiguous.
+
+31_build_5species_RBH_expression_master.py
+  Merges Deer Lake Average_TPM, four RBH tables, reference protein metadata, RBH pattern, and RBH count into one ORF level master table.
+
+32_add_DL_expression_percentile.py
+  Calculates within Deer Lake Average_TPM percentiles across the 87,621 quantified ORFs.
+
+33_integrate_transcriptome_annotations.py
+  Joins KOfam, EggNOG, and direct Pfam/HMMER evidence to the expression and RBH master table.
+
+34_extract_six_system_candidates.py
+  Performs the intentionally broad first pass screen for six functional systems prior to manual review.
+
+35_make_curated_6systems_expression_conservation.py
+  Writes the manually reviewed 36 gene table with six representative genes per functional system.
+
+36_make_final_24genes_expression_conservation.py
+  Writes the first compact 24 gene figure table and marks confirmed plastid encoded genes as not assessed for nuclear proteome RBH.
+
+37_make_final_30genes_expression_conservation.py
+  Prepared next step that expands the compact table to five genes per functional system; not yet executed at the documented stopping point.
+
+38_plot_DL_expression_RBH_matrix.py
+  Prepared plotting script for the compact expression percentile plus NI/SR/PT/TP RBH matrix; intended for the 30 gene table after final organelle checks.
 ```
 ---
 # Analysis workflow
@@ -4663,5 +4712,456 @@ $1=="contig_1647" || $2=="contig_1647"
 ```
 
 This allows self contacts, weak contacts removed by the network threshold, diatom contacts, and bacterial contacts to be evaluated separately.
+
+</details>
+
+---
+
+<details>
+<summary><strong>23. Comparative metatranscriptomics of expressed Deer Lake ORFs</strong> - nf-core/metatdenovo outputs, BLASTP reciprocal best hits, expression percentiles, KOfam, EggNOG, Pfam/HMMER, and manual functional curation</summary>
+
+This analysis was added after the genome level BLASTN and OrthoFinder comparisons. It addresses a different question: which functional systems are strongly expressed in the Deer Lake diatom metatranscriptome, and how broadly are putative homologs recovered across four reference diatom proteomes?
+
+The analysis starts from the **Deer Lake diatom metatranscriptome generated with nf-core/metatdenovo** in Section 10. It does not reassemble the transcriptome and does not re-map or re-quantify the RNA-seq reads.
+
+The working directory was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/comparative_transcriptomics
+```
+
+The main Conda environment used for BLAST and table processing was:
+
+```text
+diatom_blast
+```
+
+The four reference diatoms were:
+
+```text
+NI = Nitzschia inconspicua GAI 293
+SR = Seminavis robusta D6
+PT = Phaeodactylum tricornutum Phatr3
+TP = Thalassiosira pseudonana CCMP1335
+```
+
+### 23.1 Deer Lake TransDecoder ORFs and ORF level expression
+
+The ORF level expression table produced from the metatranscriptome analysis was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/
+summary_tables/spades.transdecoder.counts.tsv.gz
+```
+
+The table contains ORF level counts and TPM values with the columns:
+
+```text
+orf  chr  start  end  strand  length  sample  count  tpm
+```
+
+The expression table uses identifiers such as `cds.NODE_1.p1`, whereas the TransDecoder peptide and annotation tables use `NODE_1.p1`. The `cds.` prefix was removed during ID matching.
+
+The original TransDecoder peptide set contained **88,924 ORFs**. A total of **87,621 ORFs** had matching TPM values and were retained. A total of 1,303 peptide ORFs did not have a matching TPM value and were not included in this analysis.
+
+The preparation script is:
+
+```text
+scripts/29_prepare_DL_expressed_ORFs.py
+```
+
+No Salmon re-quantification or new RNA read mapping was performed for this comparison.
+
+### 23.2 Reference proteomes
+
+The four reference proteomes were:
+
+```text
+NI: /home/ruchita.solanki/NI_GAI293_NCBI/ncbi_dataset/data/GCA_019154785.2/protein.faa
+    38,785 proteins
+
+SR: /home/ruchita.solanki/SR_D6_NCBI/ncbi_dataset/data/GCA_903772945.1/protein.faa
+    35,995 proteins
+
+PT: /home/ruchita.solanki/trascriptome/PT_Phatr3_proteins.fasta
+    12,178 proteins
+
+TP: /home/ruchita.solanki/TP_CCMP1335_NCBI/ncbi_dataset/data/GCF_000149405.2/protein.faa
+    11,673 proteins
+```
+
+Project links:
+
+```text
+00_inputs/NI_proteins.faa
+00_inputs/SR_proteins.faa
+00_inputs/PT_proteins.faa
+00_inputs/TP_proteins.faa
+```
+
+Protein to transcript and gene maps:
+
+```text
+03_tables/NI_protein_transcript_gene_map.tsv
+03_tables/SR_protein_transcript_gene_map.tsv
+03_tables/PT_protein_transcript_gene_map.tsv
+03_tables/TP_protein_transcript_gene_map.tsv
+```
+
+### 23.3 Forward and reverse BLASTP
+
+The 87,621 expressed Deer Lake ORFs were searched against each reference proteome. The reference proteomes were then searched back against a BLAST database constructed from the expressed Deer Lake ORFs.
+
+SLURM files:
+
+```text
+slurm/24_run_DL_vs_reference_proteomes_BLASTP_SLURM.txt
+slurm/25_run_reference_proteomes_vs_DL_BLASTP_SLURM.txt
+```
+
+BLASTP settings:
+
+```text
+E value threshold:    1e-5
+max target sequences: 10
+SEG filtering:        yes
+```
+
+Unique Deer Lake ORFs with at least one forward BLASTP hit:
+
+| Comparator | Deer Lake ORFs |
+| --- | ---: |
+| NI | 42,369 |
+| SR | 42,156 |
+| PT | 39,662 |
+| TP | 36,231 |
+
+Unique reference proteins with at least one reverse Deer Lake hit:
+
+| Comparator | Reference proteins |
+| --- | ---: |
+| NI | 27,492 |
+| SR | 21,443 |
+| PT | 9,740 |
+| TP | 8,779 |
+
+These forward and reverse hit counts describe detectable protein similarity only.
+
+### 23.4 Reciprocal best hit extraction
+
+Reciprocal best hits were extracted with:
+
+```text
+scripts/30_extract_unique_top_RBH.py
+```
+
+For each direction, only a unique maximum bitscore hit was retained. Top bitscore ties to different subjects were treated as ambiguous. An RBH was called only when the unique top relationship was reciprocal.
+
+No additional arbitrary identity or coverage threshold was imposed after the BLASTP search. Percent identity, Deer Lake query coverage, E value, and bitscore were retained for inspection.
+
+Final RBH counts:
+
+| Comparator | RBH pairs |
+| --- | ---: |
+| NI | 7,110 |
+| SR | 8,899 |
+| PT | 7,512 |
+| TP | 6,121 |
+
+Output files:
+
+```text
+03_tables/DL_NI_RBH.tsv
+03_tables/DL_SR_RBH.tsv
+03_tables/DL_PT_RBH.tsv
+03_tables/DL_TP_RBH.tsv
+```
+
+RBH is used as a conservative putative homology indicator, not as proof of one to one orthology.
+
+### 23.5 Five species expression and RBH master
+
+The four RBH tables were merged with Deer Lake Average_TPM and reference protein metadata using:
+
+```text
+scripts/31_build_5species_RBH_expression_master.py
+```
+
+Main output:
+
+```text
+03_tables/DL_5species_RBH_expression_master.tsv
+```
+
+The RBH pattern is stored in NI, SR, PT, TP order.
+
+Observed pattern counts:
+
+| Pattern | ORFs |
+| --- | ---: |
+| 0000 | 75,168 |
+| 1111 | 2,979 |
+| 1000 | 1,306 |
+| 0100 | 1,270 |
+| 0111 | 1,173 |
+| 1110 | 1,051 |
+| 0010 | 864 |
+| 0110 | 858 |
+| 1100 | 743 |
+| 0001 | 564 |
+| 1101 | 434 |
+| 0101 | 391 |
+| 1010 | 240 |
+| 1001 | 233 |
+| 0011 | 223 |
+| 1011 | 124 |
+
+```text
+RBH in at least one reference: 12,453 ORFs
+RBH in all four references:     2,979 ORFs
+```
+
+The strict five species core table is:
+
+```text
+03_tables/DL_5species_RBH_core1111.tsv
+```
+
+A `0000` pattern means that no reciprocal best hit was detected among the four reference proteomes under this analysis. It does not establish that an ORF is unique to Deer Lake.
+
+### 23.6 Within Deer Lake expression percentile
+
+Average_TPM values were ranked across all 87,621 quantified Deer Lake ORFs with:
+
+```text
+scripts/32_add_DL_expression_percentile.py
+```
+
+Output:
+
+```text
+03_tables/DL_5species_RBH_expression_percentile.tsv
+```
+
+Percentile definition:
+
+```text
+100 x number of ORFs with TPM <= focal ORF TPM / 87,621
+```
+
+Example:
+
+```text
+NODE_1.p1
+DL_Average_TPM = 773.335845
+DL_expression_percentile = 99.87
+```
+
+The percentile is a within Deer Lake metric and is not a cross species expression comparison.
+
+### 23.7 Functional annotation integration
+
+Three available transcriptome annotation layers were integrated by shared TransDecoder ORF ID.
+
+EggNOG:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/
+summary_tables/spades.transdecoder.emapper.tsv.gz
+```
+
+KOfam:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/
+summary_tables/spades.transdecoder.kofamscan-uniq.tsv.gz
+```
+
+Direct Pfam/HMMER:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/
+hmmer/spades.transdecoder.Pfam-A.tbl.gz
+```
+
+Integration script:
+
+```text
+scripts/33_integrate_transcriptome_annotations.py
+```
+
+Direct Pfam processing retained only HMMER hits with an included domain count greater than zero.
+
+Observed annotation counts:
+
+```text
+EggNOG annotated ORFs:               67,401
+KOfam annotated ORFs:                73,877
+ORFs with included Pfam hits:        60,667
+At least one annotation source:      79,176
+Total Deer Lake ORFs in the master:  87,621
+```
+
+Combined output:
+
+```text
+03_tables/DL_expression_RBH_integrated_annotations.tsv
+```
+
+The MMETSP DIAMOND output within the Eukulele workflow was inspected but not used for functional integration because it contained a standard 12 column alignment table with CAMPEP subject identifiers and no functional descriptions.
+
+### 23.8 Broad six system candidate screen
+
+The integrated table was screened for candidates in:
+
+```text
+Photosynthesis
+Carbon fixation and CCM
+Silica metabolism
+Ion homeostasis and osmoregulation
+Urea and nitrogen metabolism
+Oxidative stress
+```
+
+Script:
+
+```text
+scripts/34_extract_six_system_candidates.py
+```
+
+Output:
+
+```text
+03_tables/DL_functional_candidates_6systems.tsv
+```
+
+Initial broad candidate counts:
+
+| Functional system | Candidate ORFs |
+| --- | ---: |
+| Photosynthesis | 854 |
+| Carbon fixation and CCM | 254 |
+| Silica metabolism | 20 |
+| Ion homeostasis and osmoregulation | 3,848 |
+| Urea and nitrogen metabolism | 832 |
+| Oxidative stress | 1,141 |
+
+These counts are not pathway abundance estimates. Broad keywords intentionally recovered false positives and were used only to collect candidates for manual review.
+
+### 23.9 Manual functional review
+
+The broad search was reduced using explicit KOfam, EggNOG, and direct Pfam evidence.
+
+The curated table is generated by:
+
+```text
+scripts/35_make_curated_6systems_expression_conservation.py
+```
+
+Output:
+
+```text
+03_tables/DL_curated_6systems_expression_conservation.tsv
+```
+
+The current curated table contains six representative genes per system, for a total of 36 genes.
+
+For silica metabolism, 18 inspected candidates carried both an EggNOG `Silicon transporter` description and a direct `PF03842.19|Silic_transp` Pfam hit. Because some KOfam calls were discordant, these proteins were retained conservatively as **putative silicon transporter family proteins** rather than being assigned SIT1, SIT2, or SIT3 subtype names.
+
+For ion homeostasis, the broad screen was reduced to defined transport machinery such as V type H+ ATPases, chloride channels, potassium channels, SLC9 sodium/hydrogen exchangers, and Na+/H+ antiporters. F type ATP synthase proteins, calcium dependent kinases, and generic sodium coupled nutrient transporters were not treated as core ion homeostasis representatives simply because their descriptions contained ion related terms.
+
+Strong Na+/H+ exchange candidates were supported by SLC9 or Na+/H+ antiporter annotations and, for selected proteins, direct `PF00999` (`Na_H_Exchanger`) support.
+
+### 23.10 Compact 24 gene table
+
+The first compact figure table contains four representatives per system:
+
+```text
+scripts/36_make_final_24genes_expression_conservation.py
+```
+
+Output:
+
+```text
+03_tables/DL_final_24genes_expression_conservation.tsv
+```
+
+The compact table retains function, ORF ID, Average_TPM, expression percentile, NI/SR/PT/TP RBH calls, RBH pattern, RBH count, and selected annotation evidence.
+
+Obvious plastid encoded genes are not interpreted from the nuclear reference proteome RBH matrix. Confirmed plastid encoded representatives are marked `NA` rather than `0` in the compact table to avoid implying biological absence from the reference species.
+
+### 23.11 Proposed 30 gene extension
+
+Five genes per functional system were selected as the next figure iteration.
+
+Prepared script:
+
+```text
+scripts/37_make_final_30genes_expression_conservation.py
+```
+
+Prepared figure script:
+
+```text
+scripts/38_plot_DL_expression_RBH_matrix.py
+```
+
+At the stopping point documented here, the 30 gene table and final 30 gene figure had **not yet been executed**. The RuBisCO small subunit candidate should have its organelle versus nuclear origin checked before its RBH assessment is finalized.
+
+### 23.12 Exploratory transcript BLASTN
+
+Before the ORF level RBH analysis was adopted, 87,325 assembled Deer Lake transcripts were compared with NI, SR, PT, and TP transcript sets using `dc-megablast`.
+
+SLURM:
+
+```text
+slurm/26_run_exploratory_transcript_dcmegablast_SLURM.txt
+```
+
+Unique Deer Lake transcripts with at least one hit:
+
+| Comparator | Deer Lake transcripts |
+| --- | ---: |
+| NI | 12,901 |
+| SR | 11,674 |
+| PT | 11,360 |
+| TP | 8,322 |
+
+Summary:
+
+```text
+Total Deer Lake transcripts:            87,325
+Hit in at least one comparator:          16,614
+No detected hit in the four references: 70,711
+```
+
+This was retained as an exploratory nucleotide similarity analysis rather than as the final homology metric.
+
+### 23.13 Public cross species expression was not forced
+
+Public *S. robusta* Salmon output was inspected as a possible cross species expression comparison. The public transcript identifiers used `Sro...` IDs that did not directly map to the NCBI protein/gene identifiers used in the reference proteome, and no simple plain text crosswalk was available from the inspected repository files.
+
+Because independently generated expression studies also differ in experimental design, raw TPM values were not compared directly across species.
+
+The final strategy therefore uses:
+
+```text
+Deer Lake Average_TPM
+Deer Lake within transcriptome expression percentile
++
+NI/SR/PT/TP protein level RBH status
+```
+
+### 23.14 Interpretation rules
+
+The analysis can support wording such as:
+
+> Highly expressed Deer Lake ORFs included both broadly conserved proteins with reciprocal best hits across multiple reference diatoms and proteins for which reciprocal best hits were recovered in few or none of the four reference proteomes.
+
+It does not by itself support claims of Deer Lake specificity, definitive biological absence from another species, cross species differential expression, induction, or confirmed one to one orthology.
+
+Preferred wording for `0000`:
+
+> No reciprocal best hit was detected among the four reference proteomes under this analysis.
 
 </details>
