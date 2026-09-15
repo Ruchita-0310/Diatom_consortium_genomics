@@ -2,7 +2,7 @@
 
 This repository documents the analysis workflow used to assemble, polish, classify, annotate, and compare genomic and transcriptomic data recovered from a diatom dominated microbial consortium enriched from Deer Lake, British Columbia.
 
-The workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, BRAKER4 ET gene prediction, functional annotation, transcript expression integration, nuclear genome refinement, repeat analysis, representative gene curation, four genome nucleotide comparison, and Hi C contact analysis.
+The workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, BRAKER4 ET gene prediction, functional annotation, transcript expression integration, nuclear genome refinement, repeat analysis, representative gene curation, four genome nucleotide comparison, ORF level comparative metatranscriptomics, and Hi C contact analysis.
 
 The current comparative nucleotide analysis uses a curated set of **14,941 Deer Lake nuclear genes** and compares them with four reference diatom genomes using `dc-megablast`:
 
@@ -12,6 +12,8 @@ The current comparative nucleotide analysis uses a curated set of **14,941 Deer 
 - *Thalassiosira pseudonana* (TP)
 
 A protein level OrthoFinder comparison is retained as a secondary exploratory analysis. The BLASTN analysis is the current gene level comparison used for the manuscript figure and expression summaries.
+
+A separate comparative metatranscriptomic analysis was added using the **Deer Lake diatom TransDecoder ORFs generated from the nf-core/metatdenovo workflow**. This analysis uses Deer Lake ORF level Average_TPM, within Deer Lake expression percentiles, reciprocal best BLASTP hits against NI, SR, PT, and TP, and integrated KOfam, EggNOG, and direct Pfam/HMMER annotation. It is complementary to the 14,941 nuclear gene BLASTN analysis and does not replace the genome level comparison.
 
 ---
 
@@ -55,6 +57,16 @@ Master 14,941 gene table with BLASTN metrics and Average_TPM
 Expression comparison and BLASTN unmatched gene subsets
    ↓
 Secondary five proteome OrthoFinder analysis
+   ↓
+Expressed Deer Lake TransDecoder ORFs: 87,621
+   ↓
+Forward + reverse BLASTP against NI, SR, PT, TP
+   ↓
+Reciprocal best hit matrix + Deer Lake expression percentile
+   ↓
+KOfam + EggNOG + direct Pfam/HMMER integration
+   ↓
+Manual curation of six functional systems
    ↓
 Hi C mapping to the polished whole assembly
    ↓
@@ -181,6 +193,123 @@ The plot uses `log10(Average TPM + 1)`, retains true TPM values of zero, exclude
 
 ---
 
+
+### Comparative metatranscriptomic RBH analysis
+
+A separate ORF level comparison was performed using the Deer Lake diatom metatranscriptome assembled and annotated with **nf-core/metatdenovo**. The analysis starts from TransDecoder ORFs and the ORF level TPM table rather than from the BRAKER4 nuclear gene set.
+
+The original TransDecoder peptide set contained:
+
+```text
+88,924 ORFs
+```
+
+A total of:
+
+```text
+87,621 ORFs
+```
+
+had matching TPM values and were retained for the expression based protein comparison.
+
+The expressed Deer Lake ORFs were compared by BLASTP with four reference diatom proteomes:
+
+- *Nitzschia inconspicua* (NI)
+- *Seminavis robusta* (SR)
+- *Phaeodactylum tricornutum* (PT)
+- *Thalassiosira pseudonana* (TP)
+
+BLASTP was run in both directions. Reciprocal best hits were retained only when both members of the pair were unique top bitscore hits. Top score ties were treated as ambiguous and were not called as RBHs.
+
+Observed RBH counts:
+
+| Comparator | Deer Lake ORFs with an RBH |
+| --- | ---: |
+| NI | 7,110 |
+| SR | 8,899 |
+| PT | 7,512 |
+| TP | 6,121 |
+| At least one comparator | 12,453 |
+| All four comparators | 2,979 |
+
+The main ORF level master table is:
+
+```text
+comparative_transcriptomics/03_tables/
+DL_5species_RBH_expression_master.tsv
+```
+
+A within Deer Lake expression percentile was calculated across all 87,621 quantified ORFs:
+
+```text
+comparative_transcriptomics/03_tables/
+DL_5species_RBH_expression_percentile.tsv
+```
+
+The percentile describes relative expression **within the Deer Lake metatranscriptome only**. It is not a cross species TPM comparison.
+
+Functional evidence was integrated from:
+
+```text
+EggNOG mapper
+KOfam
+direct Pfam/HMMER
+```
+
+Observed annotation coverage:
+
+| Annotation layer | ORFs annotated |
+| --- | ---: |
+| EggNOG | 67,401 |
+| KOfam | 73,877 |
+| Direct Pfam/HMMER | 60,667 |
+| At least one of the three layers | 79,176 |
+
+The combined annotation, expression, and RBH table is:
+
+```text
+comparative_transcriptomics/03_tables/
+DL_expression_RBH_integrated_annotations.tsv
+```
+
+Candidate genes were screened and manually reviewed in six functional systems:
+
+```text
+Photosynthesis
+Carbon fixation and CCM
+Silica metabolism
+Ion homeostasis and osmoregulation
+Urea and nitrogen metabolism
+Oxidative stress
+```
+
+The manually curated six system table is:
+
+```text
+comparative_transcriptomics/03_tables/
+DL_curated_6systems_expression_conservation.tsv
+```
+
+The current compact figure table contains 24 representatives, four per functional system:
+
+```text
+comparative_transcriptomics/03_tables/
+DL_final_24genes_expression_conservation.tsv
+```
+
+A 30 gene version with five representatives per system was prepared as the next step but had not yet been executed at the stopping point documented here.
+
+Important interpretation:
+
+- `RBH = 1` means a reciprocal best protein hit was detected under the stated analysis.
+- `RBH = 0` does not establish biological absence from the reference species.
+- `0000` should be described as **no reciprocal best hit detected among the four reference proteomes**, not as Deer Lake specific.
+- Obvious plastid encoded genes are not interpreted using the nuclear reference proteome RBH matrix and are marked `NA` in compact figure tables when appropriate.
+- Expression percentiles are Deer Lake only and do not support cross species expression claims.
+
+---
+
+
 ### Hi C whole assembly network
 
 The polished whole assembly contains:
@@ -278,27 +407,6 @@ These values represent orthogroup sharing. They should not be interpreted as one
 
 ---
 
-## Repository scripts
-
-The original repository contains scripts `01` through `22`. This update adds:
-
-```text
-scripts/
-├── 23_prepare_DL_BLASTN_query.py
-├── 24_build_BLASTN_master_table.py
-├── 25_make_BLASTN_subsets.py
-├── 26_plot_BLASTN_TPM_panelA.py
-├── 27_make_HiC_undirected_min2_edges.py
-└── 28_plot_HiC_whole_assembly_network.py
-```
-
-SLURM workflows are stored as plain text files in:
-
-```text
-slurm/
-└── 23_run_four_genome_dcmegablast_SLURM.txt
-```
-
 The complete command history, paths, filtering logic, output counts, and interpretation notes are documented in [`data_analysis.md`](data_analysis.md).
 
 ---
@@ -311,6 +419,8 @@ The complete command history, paths, filtering logic, output counts, and interpr
 | Expression figure | pandas, NumPy, SciPy, Matplotlib |
 | Hi C edge processing | Python, pandas |
 | Hi C network visualization | pandas, NumPy, NetworkX, Matplotlib |
+| ORF level reciprocal best hit analysis | BLAST+, Python |
+| Transcriptome annotation integration and curation | KOfam, EggNOG mapper, HMMER/Pfam, Python, pandas |
 
 Laptop plotting dependencies can be installed with:
 
@@ -330,3 +440,7 @@ pip install -r requirements_laptop.txt
 - Hi C edges represent proximity ligation support under the filtering criteria used and should not be interpreted as direct ecological interaction or mutualism.
 - Organelle contigs are separate DNA molecules and are not expected to scaffold automatically into the nuclear contact network.
 - Candidate mitochondrial contig assignments remain provisional.
+- Reciprocal best hits are conservative putative homology indicators and are not proof of one to one orthology.
+- Absence of an RBH is not proof that a homolog is absent from a reference species.
+- Deer Lake ORF expression percentiles are calculated only within the 87,621 quantified Deer Lake ORFs and are not cross species expression values.
+- Plastid encoded genes are not interpreted from the nuclear proteome RBH matrix.
