@@ -1,9 +1,5 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The current workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware gene curation, four genome nucleotide comparison, secondary protein orthology analysis, ORF level comparative metatranscriptomics, and Hi C contact network analysis.
-
-The current manuscript level comparative gene analysis uses a repeat and plastid quality controlled set of 14,941 Deer Lake nuclear genes and compares them by `dc-megablast` with *Nitzschia inconspicua*, *Seminavis robusta*, *Phaeodactylum tricornutum*, and *Thalassiosira pseudonana*. OrthoFinder is retained as a secondary protein level analysis. Historical PT and TP pairwise BLASTN sections remain below for provenance, but the final four comparator BLASTN workflow is documented in Section 21.
-
-A separate ORF level comparative metatranscriptomic analysis was subsequently performed from the Deer Lake **nf-core/metatdenovo** output. This analysis uses expressed TransDecoder ORFs, reciprocal best BLASTP hits against the same four reference diatoms, a within Deer Lake expression percentile, and integrated KOfam, EggNOG, and direct Pfam/HMMER annotation. The new workflow is documented in Section 23 and is complementary to, rather than a replacement for, the 14,941 nuclear gene BLASTN analysis.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The current workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware gene curation, four genome nucleotide comparison, secondary protein orthology analysis, ORF level comparative metatranscriptomics, Hi C contact network analysis, and seasonal recruitment of Deer Lake Nitzschia like 18S rRNA reads across mat, sediment, and dark incubation samples.
 
 ---
 
@@ -62,6 +58,10 @@ Hi C mapping to polished whole assembly
 High confidence contig contact processing
    ↓
 Whole assembly network visualization
+   ↓
+Seasonal eukaryotic rRNA read recruitment to Deer Lake Nitzschia 18S
+   ↓
+Season, sampling type, and dark incubation occurrence analysis
 ```
 ---
 
@@ -84,56 +84,14 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Expression integration           | DIAMOND, Python, pandas, TransDecoder ORFs, Average_TPM table                                                                           |
 | Comparative genomics             | NCBI RefSeq/FTP, BLASTN, bedtools, seqkit, RepeatModeler, RepeatMasker, OrthoFinder, DIAMOND, FAMSA, FastTree, Python                 |
 | Hi-C mapping and contact network | FastQC, MultiQC, BWA-MEM, samtools, seqkit, YaHS, awk, Python                                                                           |
+| Seasonal 18S occurrence          | MEGAHIT, Barrnap, bedtools, BLAST+, SILVA SSU Ref NR99 138.2, BBMap, samtools, Python, pandas, Matplotlib                         |
 
 ---
 
 ## Repository structure for Python scripts
 Custom Python scripts are stored in `scripts/` and are numbered according to their role in the analysis. Runnable shell and SLURM workflows are documented directly within the relevant workflow sections rather than listed as separate repository scripts.
 
-```text
-scripts/
-├── 01_classify_metaeuk_contigs.py
-├── 02_make_swissprot_best_hits.py
-├── 03_make_bacillariophyta_best_hits.py
-├── 04_summarize_interproscan.py
-├── 05_merge_functional_annotation_layers.py
-├── 06_merge_phaeodactylum_blast_hits.py
-├── 07_merge_thalassiosira_blast_hits.py
-├── 08_add_BRAKER_lengths_clean.py
-├── 09_make_best_ORF_to_BRAKER_mapping_clean.py
-├── 10_add_ONLY_Average_TPM_clean.py
-├── 11_make_FINAL_clean_BRAKER_isoform_table.py
-├── 12_make_boss_review_gene_table_PTredo.py
-├── 13_add_thalassiosira_yes_no.py
-├── 14_make_hic_network_files.py
-├── 15_make_hic_primary_mapq30_pid95_tables.py
-├── 16_make_hic_pair_type_tables.py
-├── 17_make_hic_simple_mixed_read_table.py
-├── 18_make_DL_nuclear_representative_proteome.py
-├── 19_calculate_DL_CDS_repeat_overlap.py
-├── 20_classify_DL_TE_candidates.py
-├── 21_prepare_reference_proteome.py
-├── 22_make_final_orthofinder_gene_table.py
-├── 23_prepare_DL_BLASTN_query.py
-├── 24_build_BLASTN_master_table.py
-├── 25_make_BLASTN_subsets.py
-├── 26_plot_BLASTN_TPM_panelA.py
-├── 27_make_HiC_undirected_min2_edges.py
-├── 28_plot_HiC_whole_assembly_network.py
-├── 29_prepare_DL_expressed_ORFs.py
-├── 30_extract_unique_top_RBH.py
-├── 31_build_5species_RBH_expression_master.py
-├── 32_add_DL_expression_percentile.py
-├── 33_integrate_transcriptome_annotations.py
-├── 34_extract_six_system_candidates.py
-├── 35_make_curated_6systems_expression_conservation.py
-├── 36_make_final_24genes_expression_conservation.py
-├── 37_make_final_30genes_expression_conservation.py
-└── 38_plot_DL_expression_RBH_matrix.py
-```
-
-The scripts are numbered sequentially from `01` to `38`. Custom Python logic is stored in `scripts/`. The comparative metatranscriptomics BLAST jobs added in Section 23 are stored as plain text SLURM files in `slurm/`.
-
+The scripts are numbered sequentially from `01` to `42`. Custom Python logic is stored in `scripts/`. 
 Script purposes:
 
 ```text
@@ -250,6 +208,18 @@ Script purposes:
 
 38_plot_DL_expression_RBH_matrix.py
   Prepared plotting script for the compact expression percentile plus NI/SR/PT/TP RBH matrix; intended for the 30 gene table after final organelle checks.
+
+39_make_18S_normalized_table.py
+  Normalizes Deer Lake Nitzschia like 18S read recruitment for the initial 14 merged seasonal eukaryotic rRNA libraries.
+
+40_make_all_35_18S_table.py
+  Combines the 14 merged libraries with 21 additional seasonal libraries and calculates the final normalized 35 sample 18S table.
+
+41_make_18S_group_summary.py
+  Summarizes normalized Nitzschia like 18S percentages by season, sampling type, and sediment dark incubation time.
+
+42_plot_Nitzschia_18S_season_dark_incubation.py
+  Generates the four panel seasonal occurrence and dark incubation figure as a 1000 dpi PNG.
 ```
 ---
 # Analysis workflow
@@ -5163,5 +5133,809 @@ It does not by itself support claims of Deer Lake specificity, definitive biolog
 Preferred wording for `0000`:
 
 > No reciprocal best hit was detected among the four reference proteomes under this analysis.
+
+</details>
+
+---
+
+<details>
+<summary><strong>24. Seasonal occurrence of Deer Lake Nitzschia like 18S rRNA</strong> - seasonal eukaryotic rRNA reads, exploratory 18S assembly, SILVA screening, direct BBMap recruitment, normalization, and dark incubation analysis</summary>
+
+This analysis asked a focused ecological question: **is an 18S rRNA signal closely matching the Deer Lake diatom detected across seasons, sampling types, and sediment dark incubation periods?**
+
+The analysis uses the eukaryotic rRNA read fraction generated from the seasonal RNA libraries. During the original library preparation, bacterial rRNA was depleted with the NEBNext rRNA Depletion Kit Bacteria. After sequencing and BBDuk quality filtering, eukaryotic rRNA reads were identified with SortMeRNA. The raw total RNA reads were not available for the present analysis, so the denominator used here is the recovered eukaryotic rRNA read pool rather than total RNA-seq reads.
+
+The Deer Lake 18S reference used throughout this analysis was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/spades/trees/new_18S/Nitzschia_18S_full.fasta
+```
+
+The reference length was 1,787 bp.
+
+The working directory was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+```
+
+### 24.1 Link the seasonal eukaryotic rRNA libraries
+
+The original rRNA files were stored in:
+
+```text
+/work/ebg_lab/eb/overwinter/rRNA
+```
+
+A dedicated seasonal analysis directory was created and the FASTQ files were linked rather than copied:
+
+```bash
+cd /work/ebg_lab/eb/diatom_consortia
+
+mkdir -p seasonal_organelle_analysis/reads
+
+ln -s /work/ebg_lab/eb/overwinter/rRNA/*.fq.gz \
+      seasonal_organelle_analysis/reads/
+```
+
+The analysis distinguished two biological sampling types:
+
+```text
+Mat
+Sediment
+```
+
+For sediment samples, `Sed0M`, `Sed3M`, and `Sed9M` refer to **0, 3, and 9 months of dark incubation**, not sediment depth.
+
+The final design therefore includes:
+
+```text
+Season
++
+Sampling type: Mat or Sediment
++
+Sediment dark incubation: 0, 3, or 9 months
+```
+
+The six `PPBio` libraries were not included because they represent a separate sampling or experimental category.
+
+### 24.2 Exploratory assembly of the 14 merged rRNA libraries
+
+The first objective was to determine whether seasonal 18S sequences could be reconstructed directly from the merged rRNA reads. The 14 merged libraries were assembled independently with MEGAHIT.
+
+A first test assembly used:
+
+```text
+LY-SumRNA-MatSite3_S1_rRNA_merged.fq.gz
+```
+
+MEGAHIT produced 13 contigs totaling 8,402 bp, with a maximum contig length of 1,087 bp. Barrnap identified four partial 18S rRNA regions in this assembly, but none was a close full length match to the Deer Lake Nitzschia 18S reference.
+
+The test was therefore expanded to all 14 merged libraries.
+
+Create the merged sample list:
+
+```bash
+ls reads/*_rRNA_merged.fq.gz | sort > merged_samples.txt
+```
+
+The file should contain 14 entries:
+
+```bash
+wc -l merged_samples.txt
+```
+
+#### SLURM: assemble all 14 merged libraries
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=18S_asm
+#SBATCH --output=logs/18S_asm_%A_%a.out
+#SBATCH --error=logs/18S_asm_%A_%a.err
+#SBATCH --array=1-14%3
+#SBATCH --time=06:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+
+set -euo pipefail
+
+module load megahit/1.2.9
+
+BASE=/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+cd "$BASE"
+
+mkdir -p assemblies logs
+
+READ=$(sed -n "${SLURM_ARRAY_TASK_ID}p" merged_samples.txt)
+NAME=$(basename "$READ" _rRNA_merged.fq.gz)
+
+echo "Sample: $NAME"
+echo "Input: $READ"
+echo "Start: $(date)"
+
+megahit \
+    -r "$READ" \
+    -o "assemblies/${NAME}" \
+    -t 16 \
+    --min-contig-len 500
+
+echo "Finished: $(date)"
+```
+
+After completion:
+
+```bash
+find assemblies -name "final.contigs.fa" | wc -l
+```
+
+Output:
+
+```text
+14
+```
+
+### 24.3 Barrnap screening of assembled seasonal 18S candidates
+
+Barrnap v0.9 was run in eukaryotic mode. The rejection threshold was lowered to 0.25 because the environmental 18S assemblies were often partial.
+
+Repository metadata templates are stored under `metadata/`. The working analysis used copies in the seasonal analysis root directory:
+
+```bash
+cp metadata/merged_sample_metadata.tsv ./merged_sample_metadata.tsv
+cp metadata/additional_sample_metadata.tsv ./additional_sample_metadata.tsv
+```
+
+The 14 merged libraries were described by:
+
+```text
+metadata/merged_sample_metadata.tsv
+```
+
+The metadata fields were:
+
+```text
+Sample
+Season
+Sampling_type
+```
+
+#### SLURM: Barrnap across all merged assemblies
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=barrnap_18S
+#SBATCH --output=logs/barrnap_18S_%j.out
+#SBATCH --error=logs/barrnap_18S_%j.err
+#SBATCH --time=01:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+
+set -euo pipefail
+
+BASE=/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+cd "$BASE"
+
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate barrnap_env
+
+mkdir -p barrnap
+
+tail -n +2 merged_sample_metadata.tsv | while IFS=$'\t' read -r SAMPLE SEASON TYPE
+do
+    echo "Processing: $SAMPLE"
+
+    barrnap \
+        --kingdom euk \
+        --reject 0.25 \
+        --threads 4 \
+        "assemblies/${SAMPLE}/final.contigs.fa" \
+        > "barrnap/${SAMPLE}.gff"
+done
+
+echo "Barrnap finished: $(date)"
+```
+
+Barrnap recovered **89 candidate partial 18S regions** across the 14 merged libraries.
+
+Candidate counts per library ranged from 2 to 12.
+
+The exact Barrnap coordinates were extracted with bedtools so that strand orientation was preserved:
+
+```bash
+mkdir -p extracted_18S
+
+while IFS=$'\t' read -r SAMPLE SEASON TYPE
+do
+    [[ "$SAMPLE" == "Sample" ]] && continue
+
+    GFF="barrnap/${SAMPLE}.gff"
+    ASSEMBLY="assemblies/${SAMPLE}/final.contigs.fa"
+    BED="extracted_18S/${SAMPLE}_18S.bed"
+    FASTA="extracted_18S/${SAMPLE}_18S.fasta"
+
+    awk -v sample="$SAMPLE" -v season="$SEASON" -v type="$TYPE" \
+        'BEGIN{OFS="\t"}
+         $3=="rRNA" && $9 ~ /Name=18S_rRNA/ {
+             print $1, $4-1, $5,
+                   sample "|" season "|" type "|" $1 "|" $4 "-" $5,
+                   $6, $7
+         }' \
+        "$GFF" > "$BED"
+
+    bedtools getfasta \
+        -fi "$ASSEMBLY" \
+        -bed "$BED" \
+        -s \
+        -nameOnly \
+        > "$FASTA"
+
+done < merged_sample_metadata.tsv
+
+cat extracted_18S/*_18S.fasta \
+    > extracted_18S/all_seasonal_18S_candidates.fasta
+
+grep -c "^>" extracted_18S/all_seasonal_18S_candidates.fasta
+```
+
+Output:
+
+```text
+89
+```
+
+The FASTA identifiers retain season and sampling type, for example:
+
+```text
+>LY-FallRNA-MatSite3_S23|Fall|Mat|k59_227|1-704(-)
+```
+
+### 24.4 Compare assembled 18S candidates with the Deer Lake Nitzschia reference
+
+The 89 Barrnap candidates were first compared directly with the Deer Lake 18S reference:
+
+```bash
+module load blast/2.10.0
+
+blastn \
+    -query extracted_18S/all_seasonal_18S_candidates.fasta \
+    -subject /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/spades/trees/new_18S/Nitzschia_18S_full.fasta \
+    -max_hsps 1 \
+    -outfmt "6 qseqid sseqid pident length qlen qcovhsp mismatch gapopen qstart qend sstart send evalue bitscore" \
+    > extracted_18S/all_candidates_vs_Nitzschia18S.tsv
+```
+
+None of the assembled environmental candidates represented a close, long alignment to the Deer Lake Nitzschia 18S. The strongest percent identity observed among these partial contigs was 95.62%, but only 137 bp of a 710 bp query aligned.
+
+This result was interpreted as an **assembly limitation**, not evidence that the Deer Lake lineage was absent.
+
+### 24.5 SILVA SSU classification of the assembled 18S candidates
+
+The seasonal 18S candidates were screened against the local SILVA 138.2 SSU Ref NR99 database.
+
+The source FASTA was:
+
+```text
+~/SILVA_138.2_SSURef_NR99_tax_silva.fasta
+```
+
+Build the local BLAST database:
+
+```bash
+mkdir -p silva_db
+
+makeblastdb \
+    -in ~/SILVA_138.2_SSURef_NR99_tax_silva.fasta \
+    -dbtype nucl \
+    -parse_seqids \
+    -out silva_db/SILVA_138.2_SSU_NR99
+```
+
+#### SLURM: classify the 89 seasonal 18S candidates
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=18S_SILVA
+#SBATCH --output=logs/18S_SILVA_%j.out
+#SBATCH --error=logs/18S_SILVA_%j.err
+#SBATCH --time=02:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16G
+
+set -euo pipefail
+
+module load blast/2.10.0
+
+BASE=/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+cd "$BASE"
+
+blastn \
+    -query extracted_18S/all_seasonal_18S_candidates.fasta \
+    -db silva_db/SILVA_138.2_SSU_NR99 \
+    -task blastn \
+    -evalue 1e-20 \
+    -max_target_seqs 10 \
+    -max_hsps 1 \
+    -num_threads 8 \
+    -outfmt "6 qseqid sseqid pident length qlen qcovhsp mismatch gapopen evalue bitscore stitle" \
+    > extracted_18S/all_18S_vs_SILVA_top10.tsv
+```
+
+A single best hit per candidate was obtained with:
+
+```bash
+awk -F'\t' '!seen[$1]++' \
+    extracted_18S/all_18S_vs_SILVA_top10.tsv \
+    > extracted_18S/all_18S_vs_SILVA_besthit.tsv
+```
+
+A total of 87 of the 89 candidate regions returned a SILVA hit.
+
+The assembled candidates represented diverse environmental eukaryotes, including amoebae, heteroloboseans, rotifers, ciliates, euglenids, fungi, and other stramenopiles. No assembled candidate showed a close Nitzschia assignment. Distant ochrophyte or diatom assignments among the top SILVA hits were approximately 72 to 78% identical and were not treated as the Deer Lake diatom.
+
+As a positive control, the known Deer Lake 18S reference was searched against the same SILVA database:
+
+```bash
+blastn \
+    -query /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/spades/trees/new_18S/Nitzschia_18S_full.fasta \
+    -db silva_db/SILVA_138.2_SSU_NR99 \
+    -task blastn \
+    -evalue 1e-20 \
+    -max_target_seqs 10 \
+    -max_hsps 1 \
+    -outfmt "6 qseqid sseqid pident length qlen qcovhsp evalue bitscore stitle" \
+    > extracted_18S/Nitzschia18S_vs_SILVA.tsv
+```
+
+The Deer Lake reference mapped to SILVA Nitzschia entries at approximately 98 to 99.8% identity with 95 to 99% query coverage. This confirmed that the local database correctly recognized the Deer Lake 18S as a Nitzschia or closely related bacillariophycean sequence.
+
+### 24.6 Direct recruitment of seasonal reads to the Deer Lake 18S reference
+
+Because the environmental reads were only 50 bp and the target 18S sequence could be less abundant than other eukaryotic rRNAs, assembly was not used for the final occurrence analysis.
+
+Instead, the eukaryotic rRNA reads were recruited directly to the Deer Lake 1,787 bp 18S reference with BBMap.
+
+A minimum read identity of 0.98 was used:
+
+```text
+minid=0.98
+```
+
+For 50 bp reads, this is approximately equivalent to allowing one mismatch across a full length read.
+
+The first test library was:
+
+```text
+LY-SumRNA-MatSite3_S1_rRNA_merged.fq.gz
+```
+
+The test recovered:
+
+```text
+Reference length:       1,787 bp
+Covered bases:          1,787
+Reference coverage:     100%
+Average depth:          ~40,982×
+Recruited reads:        ~1.5 million
+```
+
+This showed that the Nitzschia like signal spanned the entire 18S reference despite failure to reconstruct it as a single environmental contig.
+
+#### SLURM: direct 18S recruitment for the 14 merged libraries
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=DL18S_map
+#SBATCH --output=logs/DL18S_%A_%a.out
+#SBATCH --error=logs/DL18S_%A_%a.err
+#SBATCH --array=1-14%3
+#SBATCH --time=03:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+
+set -euo pipefail
+
+module load bbmap/38.84
+
+BASE=/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+REF=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/spades/trees/new_18S/Nitzschia_18S_full.fasta
+
+cd "$BASE"
+
+mkdir -p Nitzschia_18S_mapping logs
+
+SAMPLE=$(awk -F'\t' -v n=$((SLURM_ARRAY_TASK_ID + 1)) \
+    'NR==n {print $1}' merged_sample_metadata.tsv)
+
+READ="reads/${SAMPLE}_rRNA_merged.fq.gz"
+
+echo "Sample: $SAMPLE"
+echo "Input: $READ"
+echo "Start: $(date)"
+
+bbmap.sh \
+    -Xmx50g \
+    ref="$REF" \
+    in="$READ" \
+    covstats="Nitzschia_18S_mapping/${SAMPLE}_covstats.txt" \
+    basecov="Nitzschia_18S_mapping/${SAMPLE}_basecov.txt" \
+    minid=0.98 \
+    threads=16
+
+echo "Finished: $(date)"
+```
+
+All 14 merged libraries showed essentially complete reference coverage:
+
+```text
+13 libraries: 100.0000%
+1 library:    99.8881%
+```
+
+The initial normalized range across these 14 libraries was:
+
+```text
+0.66 to 9.23% of eukaryotic rRNA reads
+```
+
+This supported detection of a Deer Lake Nitzschia like 18S signal in Summer, Fall, and Winter merged libraries, including both mat and sediment samples where available.
+
+### 24.7 Count total eukaryotic rRNA reads for normalization
+
+Raw recruited read counts were not compared directly because library sizes differed.
+
+For each library:
+
+```text
+Nitzschia like 18S fraction
+=
+recruited 18S reads / total reads in the eukaryotic rRNA library
+```
+
+The main reported quantity is:
+
+```text
+Nitzschia like 18S percent
+=
+fraction × 100
+```
+
+RPM is also retained:
+
+```text
+Nitzschia like 18S RPM
+=
+fraction × 1,000,000
+```
+
+#### SLURM: count reads in the 14 merged libraries
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=count_rRNA
+#SBATCH --output=logs/count_rRNA_%A_%a.out
+#SBATCH --error=logs/count_rRNA_%A_%a.err
+#SBATCH --array=1-14%3
+#SBATCH --time=02:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+
+set -euo pipefail
+
+BASE=/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+cd "$BASE"
+
+mkdir -p Nitzschia_18S_mapping/read_counts logs
+
+SAMPLE=$(awk -F'\t' -v n=$((SLURM_ARRAY_TASK_ID + 1)) \
+    'NR==n {print $1}' merged_sample_metadata.tsv)
+
+READ="reads/${SAMPLE}_rRNA_merged.fq.gz"
+
+LINES=$(gzip -dc "$READ" | wc -l)
+TOTAL_READS=$((LINES / 4))
+
+printf "Sample\tTotal_rRNA_reads\n%s\t%s\n" \
+    "$SAMPLE" "$TOTAL_READS" \
+    > "Nitzschia_18S_mapping/read_counts/${SAMPLE}.tsv"
+```
+
+The initial 14 library normalized table is generated with:
+
+```text
+scripts/39_make_18S_normalized_table.py
+```
+
+Output:
+
+```text
+Nitzschia_18S_mapping/Nitzschia_18S_seasonal_normalized.tsv
+```
+
+### 24.8 Optional BAM generation for sequence level follow up
+
+Coordinate sorted BAM files were also generated for all 14 merged libraries so that nucleotide level consensus or variant analysis could be performed later if required.
+
+This step is **not required for the primary presence analysis**.
+
+#### SLURM: generate sorted 18S BAM files
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=DL18S_bam
+#SBATCH --output=logs/DL18S_bam_%A_%a.out
+#SBATCH --error=logs/DL18S_bam_%A_%a.err
+#SBATCH --array=1-14%3
+#SBATCH --time=03:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+
+set -euo pipefail
+
+module load bbmap/38.84
+module load miniconda3/samtools
+
+BASE=/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+REF=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/spades/trees/new_18S/Nitzschia_18S_full.fasta
+
+cd "$BASE"
+
+mkdir -p Nitzschia_18S_mapping/bam logs
+
+SAMPLE=$(awk -F'\t' -v n=$((SLURM_ARRAY_TASK_ID + 1)) \
+    'NR==n {print $1}' merged_sample_metadata.tsv)
+
+READ="reads/${SAMPLE}_rRNA_merged.fq.gz"
+
+bbmap.sh \
+    -Xmx50g \
+    ref="$REF" \
+    in="$READ" \
+    out="stdout.sam" \
+    minid=0.98 \
+    threads=16 \
+    2> "logs/${SAMPLE}_bbmap_bam.log" \
+| samtools view -@ 4 -b - \
+| samtools sort -@ 4 \
+    -o "Nitzschia_18S_mapping/bam/${SAMPLE}.sorted.bam"
+
+samtools index \
+    "Nitzschia_18S_mapping/bam/${SAMPLE}.sorted.bam"
+```
+
+Fourteen sorted BAM files and indexes were produced. Pileup or consensus calling was not required for the current ecological question because the primary objective was detection across seasons rather than fine scale 18S sequence variation.
+
+### 24.9 Expand the analysis to 21 complementary seasonal libraries
+
+The 14 merged libraries did not contain all season and dark incubation combinations. An additional 21 eukaryotic rRNA libraries were therefore processed with the same BBMap identity threshold and the same normalization method.
+
+The 21 libraries added:
+
+```text
+Spring Mat:             3 libraries
+Spring Sediment 0M:     3 libraries
+
+Summer Sediment 3M:     3 libraries
+Summer Sediment 9M:     3 libraries
+
+Winter Sediment 0M:     3 libraries
+Winter Sediment 3M:     3 libraries
+Winter Sediment 9M:     3 libraries
+```
+
+The metadata file is:
+
+```text
+metadata/additional_sample_metadata.tsv
+```
+
+The fields are:
+
+```text
+Sample
+Season
+Sampling_type
+Dark_incubation_months
+Replicate
+File
+```
+
+`Dark_incubation_months` is stored numerically as:
+
+```text
+0
+3
+9
+NA
+```
+
+#### SLURM: map and count all 21 additional libraries
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=add18S
+#SBATCH --output=logs/add18S_%A_%a.out
+#SBATCH --error=logs/add18S_%A_%a.err
+#SBATCH --array=1-21%3
+#SBATCH --time=03:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+
+set -euo pipefail
+
+module load bbmap/38.84
+
+BASE=/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+REF=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/spades/trees/new_18S/Nitzschia_18S_full.fasta
+
+cd "$BASE"
+
+mkdir -p \
+    Nitzschia_18S_mapping/additional/covstats \
+    Nitzschia_18S_mapping/additional/basecov \
+    Nitzschia_18S_mapping/additional/read_counts \
+    logs
+
+LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" additional_sample_metadata.tsv)
+
+IFS=$'\t' read -r SAMPLE SEASON TYPE DARK_MONTHS REP READ <<< "$LINE"
+
+echo "Sample: $SAMPLE"
+echo "Season: $SEASON"
+echo "Type: $TYPE"
+echo "Dark incubation: $DARK_MONTHS months"
+echo "Input: $READ"
+
+bbmap.sh \
+    -Xmx50g \
+    ref="$REF" \
+    in="$READ" \
+    covstats="Nitzschia_18S_mapping/additional/covstats/${SAMPLE}_covstats.txt" \
+    basecov="Nitzschia_18S_mapping/additional/basecov/${SAMPLE}_basecov.txt" \
+    minid=0.98 \
+    threads=16
+
+LINES=$(gzip -dc "$READ" | wc -l)
+TOTAL_READS=$((LINES / 4))
+
+printf "Sample\tTotal_rRNA_reads\n%s\t%s\n" \
+    "$SAMPLE" "$TOTAL_READS" \
+    > "Nitzschia_18S_mapping/additional/read_counts/${SAMPLE}.tsv"
+```
+
+All 21 coverage files and all 21 read count files were generated successfully.
+
+### 24.10 Final 35 sample normalized table
+
+The final dataset contains:
+
+```text
+14 merged seasonal libraries
++
+21 complementary seasonal libraries
+=
+35 seasonal libraries
+```
+
+The final combined table is generated with:
+
+```text
+scripts/40_make_all_35_18S_table.py
+```
+
+Output:
+
+```text
+Nitzschia_18S_mapping/Nitzschia_18S_ALL_35_samples.tsv
+```
+
+The table contains:
+
+```text
+Sample
+Season
+Sampling_type
+Dark_incubation_months
+Replicate
+Total_rRNA_reads
+Nitzschia_18S_reads
+Nitzschia_18S_fraction
+Nitzschia_18S_percent
+Nitzschia_18S_RPM
+Reference_coverage_percent
+Covered_bases
+Reference_length
+Average_depth
+```
+
+A grouped descriptive summary is generated with:
+
+```text
+scripts/41_make_18S_group_summary.py
+```
+
+Output:
+
+```text
+Nitzschia_18S_mapping/Nitzschia_18S_group_summary.tsv
+```
+
+Observed group summaries were:
+
+| Season | Sampling type | Dark incubation months | n | Mean (%) | SD | Min (%) | Max (%) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Fall | Mat | NA | 3 | 2.385 | 1.646 | 0.664 | 3.944 |
+| Fall | Sediment | 0 | 1 | 2.925 | NA | 2.925 | 2.925 |
+| Spring | Mat | NA | 3 | 10.901 | 0.974 | 9.972 | 11.915 |
+| Spring | Sediment | 0 | 3 | 7.362 | 0.227 | 7.201 | 7.621 |
+| Summer | Mat | NA | 4 | 4.149 | 2.434 | 0.974 | 6.905 |
+| Summer | Sediment | 0 | 3 | 2.717 | 0.608 | 2.255 | 3.405 |
+| Summer | Sediment | 3 | 3 | 1.509 | 0.650 | 0.814 | 2.100 |
+| Summer | Sediment | 9 | 3 | 1.318 | 1.252 | 0.227 | 2.685 |
+| Winter | Mat | NA | 3 | 8.327 | 0.782 | 7.839 | 9.229 |
+| Winter | Sediment | 0 | 3 | 10.094 | 0.344 | 9.872 | 10.490 |
+| Winter | Sediment | 3 | 3 | 7.288 | 0.280 | 7.017 | 7.576 |
+| Winter | Sediment | 9 | 3 | 7.414 | 0.386 | 7.124 | 7.853 |
+
+These values are descriptive relative sequence signals within the recovered eukaryotic rRNA fraction. They are not direct estimates of cell abundance.
+
+### 24.11 Final seasonal and dark incubation figure
+
+The final plotting script is:
+
+```text
+scripts/42_plot_Nitzschia_18S_season_dark_incubation.py
+```
+
+Input:
+
+```text
+Nitzschia_18S_mapping/Nitzschia_18S_ALL_35_samples.tsv
+```
+
+Output:
+
+```text
+Nitzschia_18S_season_dark_incubation.png
+```
+
+The figure is saved as a **1000 dpi PNG**.
+
+The proposed four panels are:
+
+```text
+A. Season × sampling condition occurrence matrix
+B. Mat seasonal distribution
+C. Sediment 0 month seasonal distribution
+D. Summer and Winter sediment response across 0, 3, and 9 months of dark incubation
+```
+
+Individual samples are retained in the quantitative panels. Means and standard deviations are shown only for groups with biological replication.
+
+The dark incubation panel keeps Summer and Winter separate because dark incubation time is an experimental or treatment variable and should not be conflated with season.
+
+### 24.12 Interpretation
+
+The primary supported conclusion is that reads closely matching the Deer Lake Nitzschia 18S reference were detected across the seasonal dataset and across the sampled mat and sediment conditions.
+
+The direct recruitment analysis is stronger for this detection question than the initial environmental 18S assembly because the seasonal reads are short and complex environmental rRNA pools are dominated by multiple eukaryotic taxa.
+
+The normalized signal varied among seasons and conditions. Spring mats and Winter mats showed higher mean Nitzschia like 18S representation than Summer and Fall mats. Fresh Winter sediment also showed a higher mean signal than Summer fresh sediment. In sediment incubated in darkness, the Nitzschia like 18S signal remained detectable after 3 and 9 months in both Summer and Winter derived samples.
+
+These patterns are interpreted descriptively because the seasonal and sampling design is not fully balanced.
+
+The analysis does **not** by itself establish:
+
+```text
+absolute diatom cell abundance
+species or strain identity from 18S alone
+cell viability after dark incubation
+photosynthetic activity
+growth during dark incubation
+seasonal differential abundance independent of all sampling factors
+```
+
+Preferred wording is:
+
+> A Nitzschia like 18S rRNA signal closely matching the Deer Lake diatom reference was detected across seasonal mat and sediment libraries. The relative representation of recruited reads within the recovered eukaryotic rRNA pool varied among seasons and sediment dark incubation periods.
 
 </details>
