@@ -19,7 +19,7 @@ MetaBAT2 binning
    ↓
 CheckM2 + GTDB-Tk + MetaEuk contig classification
    ↓
-Organelle identification
+Organelle identification and contig validation
    ↓
 18S rRNA, plastid 16S rRNA, and rbcL phylogenies
    ↓
@@ -75,7 +75,7 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Assembly quality                 | BUSCO, QUAST/MetaQUAST                                                                                                                  |
 | Binning and bin quality          | MetaBAT2, CheckM2                                                                                                                       |
 | Taxonomy and abundance           | GTDB-Tk, MetaEuk, CoverM                                                                                                                |
-| Organelle identification         | MetaQUAST, minimap2, bedtools, seqkit                                                                                                   |
+| Organelle identification         | MetaQUAST, fastANI, minimap2, samtools, bedtools, seqkit, Python                                                                         |
 | Phylogenetics                    | Barrnap, BLAST+, bedtools, seqkit, Clustal Omega, TrimAl, IQ-TREE 2, Python                                                            |
 | Transcriptomics                  | Nextflow, nf-core/metatdenovo, TransDecoder, Barrnap, STAR                                                                              |
 | Comparative metatranscriptomics    | BLAST+, KOfam, EggNOG mapper, HMMER/Pfam, Python, pandas, Matplotlib                                                                    |
@@ -91,7 +91,8 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 ## Repository structure for Python scripts
 Custom Python scripts are stored in `scripts/` and are numbered according to their role in the analysis. Runnable shell and SLURM workflows are documented directly within the relevant workflow sections rather than listed as separate repository scripts.
 
-The scripts are numbered sequentially from `01` to `42`. Custom Python logic is stored in `scripts/`. 
+The scripts are numbered sequentially from `01` to `43`. Custom Python logic is stored in `scripts/`. Runnable SLURM workflows are documented directly in the relevant analysis sections. Scripts 39 to 42 support the seasonal 18S analysis in Section 24, and script 43 summarizes per base Nanopore depth for the organelle contig validation in Section 12.
+
 Script purposes:
 
 ```text
@@ -220,6 +221,9 @@ Script purposes:
 
 42_plot_Nitzschia_18S_season_dark_incubation.py
   Generates the four panel seasonal occurrence and dark incubation figure as a 1000 dpi PNG.
+
+43_summarize_organelle_depth.py
+  Summarizes samtools per base depth as mean depth, median depth, minimum and maximum depth, covered bases, and breadth of coverage for each organelle candidate contig.
 ```
 ---
 # Analysis workflow
@@ -959,7 +963,7 @@ The resulting FASTA and GFF files were used to inspect rRNA transcript origin in
 ---
 
 <details>
-<summary><strong>12. Organelle genome identification</strong> - MetaQUAST</summary>
+<summary><strong>12. Organelle genome identification and contig validation</strong> - MetaQUAST, fastANI, and Nanopore depth</summary>
 
 Organelle contigs were identified by comparing the polished assembly against reference mitochondrial and chloroplast genomes.
 ```text
@@ -984,6 +988,140 @@ metaquast.py \
 This command compares the polished whole assembly against the organelle references to identify candidate chloroplast and mitochondrial contigs outside the binned assembly.
 
 The MetaQUAST output was used to identify candidate chloroplast and mitochondrial contigs for downstream organelle genome refinement and annotation.
+
+### 12.3 Candidate organelle contigs retained for direct comparison
+
+The candidate plastid and mitochondrial sequences were then compared directly to determine whether paired contigs represented related organelle sequence and to evaluate their long read support. The candidate contigs were:
+
+```text
+Plastid candidates
+contig_1443    155,928 bp
+contig_4315     81,781 bp
+
+Mitochondrial candidates
+contig_5628     37,927 bp
+contig_1647     66,599 bp
+```
+
+The final trimmed plastid sequence retained for downstream analysis was 120,429 bp. The mitochondrial reconstruction retained `contig_5628` and `contig_1647` as two separate contigs, with a combined length of 104,526 bp.
+
+### 12.4 Reciprocal fastANI comparison of candidate organelle contigs
+
+Each candidate contig was stored in a separate FASTA file. Reciprocal fastANI comparisons were used as a contig similarity screen. Because the candidate organelle sequences only shared partial regions, ANI values were interpreted together with the number of mapped fragments rather than as whole organelle genome ANI.
+
+The comparisons were run on ARC through SLURM:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=organelle_fastANI
+#SBATCH --output=organelle_fastANI_%j.out
+#SBATCH --error=organelle_fastANI_%j.err
+#SBATCH --time=01:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+
+set -euo pipefail
+
+fastANI \
+    -q plastid_contig_4315.fasta \
+    -r plastid_contig_1443.fasta \
+    -o plastid_4315_vs_1443.fastani.txt
+
+fastANI \
+    -q plastid_contig_1443.fasta \
+    -r plastid_contig_4315.fasta \
+    -o plastid_1443_vs_4315.fastani.txt
+
+fastANI \
+    -q mito_contig_5628.fasta \
+    -r mito_contig_1647.fasta \
+    -o mito_5628_vs_1647.fastani.txt
+
+fastANI \
+    -q mito_contig_1647.fasta \
+    -r mito_contig_5628.fasta \
+    -o mito_1647_vs_5628.fastani.txt
+```
+
+The reciprocal fastANI results were:
+
+| Query | Reference | ANI (%) | Mapped fragments | Total query fragments |
+| --- | --- | ---: | ---: | ---: |
+| `contig_4315` | `contig_1443` | 84.7222 | 21 | 27 |
+| `contig_1443` | `contig_4315` | 84.7324 | 19 | 51 |
+| `contig_5628` | `contig_1647` | 81.4720 | 4 | 12 |
+| `contig_1647` | `contig_5628` | 83.5484 | 3 | 22 |
+
+The plastid candidates therefore shared more aligned fragments than the mitochondrial candidates. The incomplete fragment recovery in both reciprocal directions showed that the contigs were not redundant full length copies, so fastANI was used only as supporting evidence of shared sequence.
+
+### 12.5 Nanopore read support, depth, and breadth of coverage
+
+Nanopore reads were mapped separately to the plastid candidate pair and the mitochondrial candidate pair with minimap2. Secondary, supplementary, and unmapped records were removed before depth calculation so that the comparison used primary mapped alignments only.
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=organelle_depth
+#SBATCH --output=organelle_depth_%j.out
+#SBATCH --error=organelle_depth_%j.err
+#SBATCH --time=04:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+
+set -euo pipefail
+
+ONT=pass_trim.fastq.gz
+
+cat plastid_contig_1443.fasta plastid_contig_4315.fasta \
+    > plastid_candidates.fasta
+
+minimap2 -ax map-ont -t 16 plastid_candidates.fasta "$ONT" \
+    | samtools sort -@ 8 -o plastid_longreads.bam
+
+samtools view -@ 8 -b -F 2308 plastid_longreads.bam \
+    > plastid_longreads_primary.bam
+
+samtools index plastid_longreads_primary.bam
+
+samtools depth -aa plastid_longreads_primary.bam \
+    > plastid_depth_primary.tsv
+
+cat mito_contig_5628.fasta mito_contig_1647.fasta \
+    > mito_candidates.fasta
+
+minimap2 -ax map-ont -t 16 mito_candidates.fasta "$ONT" \
+    | samtools sort -@ 8 -o mito_longreads.bam
+
+samtools view -@ 8 -b -F 2308 mito_longreads.bam \
+    > mito_longreads_primary.bam
+
+samtools index mito_longreads_primary.bam
+
+samtools depth -aa mito_longreads_primary.bam \
+    > mito_depth_primary.tsv
+```
+
+Per base depth was summarized with:
+
+```bash
+python scripts/43_summarize_organelle_depth.py \
+    plastid_depth_primary.tsv \
+    > plastid_depth_summary.tsv
+
+python scripts/43_summarize_organelle_depth.py \
+    mito_depth_primary.tsv \
+    > mito_depth_summary.tsv
+```
+
+The primary Nanopore alignment support was:
+
+| Candidate contig | Mean depth | Median depth | Breadth of coverage |
+| --- | ---: | ---: | ---: |
+| Plastid `contig_1443` | 96.72× | 83× | 87.25% |
+| Plastid `contig_4315` | 41.06× | 0× | 19.45% |
+| Mitochondrial `contig_5628` | 7.01× | 0× | 12.16% |
+| Mitochondrial `contig_1647` | 214.43× | 31× | 99.74% |
+
+For the plastid candidates, `contig_1443` had substantially broader and more even Nanopore support than `contig_4315`. For the mitochondrial candidates, `contig_1647` had near complete read coverage and markedly higher depth than `contig_5628`. These depth patterns were used together with sequence similarity, assembly structure, and organelle reference comparisons when evaluating the candidate contigs. Low coverage of one candidate was not treated by itself as proof that the sequence was non organellar.
 
 </details>
 
@@ -5939,3 +6077,4 @@ Preferred wording is:
 > A Nitzschia like 18S rRNA signal closely matching the Deer Lake diatom reference was detected across seasonal mat and sediment libraries. The relative representation of recruited reads within the recovered eukaryotic rRNA pool varied among seasons and sediment dark incubation periods.
 
 </details>
+
