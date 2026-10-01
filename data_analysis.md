@@ -6374,3 +6374,386 @@ Because the environmental reads were first recruited against the Deer Lake 18S r
 Phylogenetic interpretation should therefore focus on tree placement and branch support rather than assigning exact species identity from the environmental consensus alone.
 
 </details>
+
+<details>
+<summary><strong>26. Expression of Deer Lake <em>Nitzschia</em> ORFs relative to MMETSP culture transcriptomes</strong> - DIAMOND, seqkit, Python, pandas, NumPy, and Matplotlib</summary>
+
+This analysis asked whether alkaline relevant, fermentation, and DUF containing transcripts of the Deer Lake *Nitzschia* rank higher within their transcriptome than their orthologs rank within cultured eukaryote transcriptomes from the Marine Microbial Eukaryote Transcriptome Sequencing Project (MMETSP).
+
+Raw TPM values are not comparable across independently generated studies. Each transcript was therefore ranked within its own transcriptome, and Deer Lake ranks were compared with the ranks of the best ortholog in each MMETSP culture library.
+
+The analysis extends an earlier 742 gene comparison that used the same reference set and scripts (`01_build_reference.py`, `02_diamond.sh`, `03_compare.py`). Those three scripts are not part of this section and should be copied from:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/mmetsp_comparison/
+```
+
+The working directory was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/mmetsp_comparison
+```
+
+Results of the expanded run were written to:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/mmetsp_comparison/expanded
+```
+
+The 742 gene results in the parent directory were not overwritten.
+
+Custom Python scripts used in this section are stored externally in `scripts/`:
+
+```text
+scripts/44_make_MMETSP_expanded_query.py
+scripts/45_MMETSP_enrichment_and_scatter.py
+scripts/46_plot_MMETSP_dumbbell_transcripts.py
+scripts/47_plot_MMETSP_dumbbell_modules.py
+```
+
+Each script has editable paths and settings at the top and runs without command line arguments.
+
+### 26.1 MMETSP reference set
+
+The reference consisted of MMETSP peptide and expression files from the Zenodo reassembly archive (`mmetsp_pep.tar.gz`, `mmetsp_quant.tar.gz`), prepared with `01_build_reference.py`:
+
+```text
+ref/ref_peptides.faa
+ref/ref_expression.tsv
+ref/ref_peptides.dmnd
+```
+
+All 645 MMETSP libraries that passed the peptide to transcript consistency check were retained. No taxonomic or culture condition filter was applied (no `exclude_ids.txt` file was used), so the reference spans the eukaryotic lineages sampled by MMETSP. The Deer Lake ORFs were treated as diatom derived.
+
+### 26.2 Query gene sets
+
+The query set was built from three curated ORF tables:
+
+```text
+alkaline_adaptation_candidates.csv     alkaline relevant candidates, 40 modules, 5 mechanisms
+DUF_genes.csv                          ORFs carrying domains of unknown function
+interesting_genes.csv                  themed ORFs, including the fermentation module (theme B)
+```
+
+Rules applied by `44_make_MMETSP_expanded_query.py`:
+
+```text
+alkaline candidates      only "high (sources agree)" confidence retained
+bacterial modules        NhaA/NhaB/NhaC, Mrp antiporter, and microbial rhodopsin removed
+viral ORFs               ssDNA virus theme and viral contig DUFs removed
+non diatom themes        themes A, C, E, and G removed
+housekeeping reference   92 ORFs with KOs K03231, K03234, K05692, K07374, K07375, K08770
+group priority           housekeeping > fermentation > alkaline > theme > DUF
+```
+
+Every removed ORF is listed with its reason in `expanded/dropped_orfs.tsv`.
+
+The rounded `Average_TPM` column of the master expression table produced ties among weakly expressed ORFs. Expression was therefore recomputed as the unrounded mean of `TPM_sample1`, `TPM_sample2`, and `TPM_sample3`. One ORF (`NODE_5405.p1`) contained a non numeric replicate value and kept its rounded value.
+
+For each ORF the script records:
+
+```text
+user_TPM            unrounded mean TPM of the three replicates
+user_pct            percentile of user_TPM among all ORFs of the Deer Lake metatranscriptome
+user_log2_vs_HK     log2((TPM + 0.01) / summed TPM of the housekeeping ORFs)
+```
+
+One ORF was reassigned after inspection of its annotation. `NODE_2817.p1` carried only a DUF6113 Pfam hit, but its KO (K21990/K21993) and eggNOG description both indicated a formate transporter. It had been part of the fermentation group in the 742 gene run and was moved to the fermentation group through the `OVERRIDES` setting.
+
+Run:
+
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/mmetsp_comparison
+conda activate mmetsp
+export PYTHONNOUSERSITE=1
+
+python3 scripts/44_make_MMETSP_expanded_query.py
+```
+
+Observed output before the override was added:
+
+```text
+WARNING: 1 ORFs have non-numeric replicate TPM values; they keep the rounded Average_TPM. Examples: ['NODE_5405.p1']
+Average_TPM recomputed from TPM_sample1, TPM_sample2, TPM_sample3
+9940 query genes written: {'DUF': 9329, 'alkaline': 387, 'fermentation': 112, 'housekeeping': 92, 'theme': 20}
+1084 ORF entries dropped (see dropped_orfs.tsv)
+```
+
+With the override, the script additionally prints:
+
+```text
+Override: NODE_2817.p1 DUF/DUF6113 -> fermentation/Formate transporter
+```
+
+and one ORF moves from the DUF group to the fermentation group. The total of 9,940 query genes is unchanged.
+
+Outputs:
+
+```text
+expanded/query_genes.tsv
+expanded/query_ids.txt
+expanded/dropped_orfs.tsv
+```
+
+### 26.3 DIAMOND search and comparison with cultures
+
+Query peptides were extracted from the TransDecoder peptide file and searched against the existing MMETSP DIAMOND database. The comparison was then run with `03_compare.py` inside `expanded/`.
+
+DIAMOND settings:
+
+```text
+mode                 --more-sensitive
+E value              1e-10
+identity             >= 40%
+query coverage       >= 50%
+subject coverage     >= 30%
+max targets          2000
+```
+
+`03_compare.py` keeps the best hit per MMETSP library, ranks that ortholog among all transcripts of its library, and computes the same housekeeping normalized value as for Deer Lake. A transcript is called:
+
+```text
+HIGHER than references (both metrics)   Deer Lake exceeds the 90th percentile of culture libraries
+                                        in rank and in housekeeping normalized expression
+higher by rank only                     only the rank criterion is met
+within reference range / lower          otherwise
+not scored                              orthologs in fewer than 5 libraries
+```
+
+The following SLURM script was used directly on ARC:
+
+```bash
+#!/bin/bash
+####### Reserve computing resources #############
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=120:00:00
+#SBATCH --mem=100G
+#SBATCH --output=mmetsp_expanded_%j.out
+#SBATCH --error=mmetsp_expanded_%j.err
+####### Run your script #########################
+# Expanded MMETSP comparison: DIAMOND of the expanded query set against the existing
+# MMETSP reference, then 03_compare.py. Results go to expanded/, so the 742 gene run
+# in the parent folder stays untouched.
+set -euo pipefail
+
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate mmetsp
+export PYTHONNOUSERSITE=1
+
+MAIN=/work/ebg_lab/eb/diatom_consortia/mmetsp_comparison
+PEP=/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/transdecoder_to_braker_ID_bridge/CLEAN_REBUILD_FROM_RAW/01_input/transcriptome_orfs.transdecoder.clean.pep
+cd ${MAIN}/expanded
+
+# reuse the reference built for the 742 gene run
+ln -sfn ${MAIN}/ref ref
+cp -f ${MAIN}/03_compare.py .
+[[ -s ${MAIN}/exclude_ids.txt ]] && ln -sfn ${MAIN}/exclude_ids.txt exclude_ids.txt
+
+# pull the query ORFs (same matching rule as 02_diamond.sh)
+seqkit grep -r -f <(sed 's/\./\\./g; s/^/^/; s/$/(\\s|$)/' query_ids.txt) "$PEP" > query.faa
+echo "$(grep -c '>' query.faa) of $(wc -l < query_ids.txt) query sequences found"
+
+# the DIAMOND database already exists from the first run
+[[ -s ref/ref_peptides.dmnd ]] || diamond makedb --in ref/ref_peptides.faa -d ref/ref_peptides -p 32
+
+diamond blastp -q query.faa -d ref/ref_peptides -o hits.tsv -p 32 \
+  --more-sensitive -e 1e-10 --id 40 --query-cover 50 --subject-cover 30 -k 2000 \
+  --outfmt 6 qseqid sseqid pident length qcovhsp scovhsp evalue bitscore
+echo "DIAMOND done: $(wc -l < hits.tsv) hits"
+
+python3 03_compare.py
+echo "Finished: $(date)"
+```
+
+Submit:
+
+```bash
+cd /work/ebg_lab/eb/diatom_consortia/mmetsp_comparison
+sbatch run_expanded.sbatch
+```
+
+Observed results:
+
+```text
+9940 of 9940 query sequences found
+DIAMOND done: 924009 hits
+
+not scored (<5 libraries)                6237
+within reference range                   1876
+lower than references                    1238
+higher by rank only                       494
+HIGHER than references (both metrics)      95
+
+Housekeeping sanity check: median delta_pct = -11.1
+```
+
+The negative housekeeping offset is expected because Deer Lake ORFs are ranked within a mixed community transcriptome, whereas each MMETSP library represents one organism. The most expressed copy of each housekeeping gene sat close to the culture medians.
+
+After a change to the query table, only the comparison was rerun, reusing the DIAMOND hits:
+
+```bash
+salloc --mem=32G --cpus-per-task=2 --time=1:00:00
+conda activate mmetsp
+export PYTHONNOUSERSITE=1
+
+cd /work/ebg_lab/eb/diatom_consortia/mmetsp_comparison/expanded
+python3 03_compare.py
+```
+
+Output:
+
+```text
+expanded/comparison_per_gene.tsv
+```
+
+### 26.4 Enrichment of transcripts above cultures
+
+Enrichment was tested on robust transcripts only:
+
+```text
+robust     orthologs in >= 20 MMETSP libraries and median identity >= 50%
+higher     called HIGHER than references on both metrics
+```
+
+RuBisCO was set aside as a technical case because it is plastid encoded and depleted in poly(A) selected MMETSP libraries. Housekeeping ORFs were excluded from the tests.
+
+`45_MMETSP_enrichment_and_scatter.py` performs one sided Fisher exact tests at two levels:
+
+```text
+group level      each group against all other scored transcripts, per ORF and per contig
+module level     each alkaline module, fermentation Pfam, and DUF family with >= 3 scored ORFs,
+                 Benjamini-Hochberg correction
+```
+
+ORFs on the same contig are not independent, so the contig level test is the conservative result.
+
+Run:
+
+```bash
+python3 scripts/45_MMETSP_enrichment_and_scatter.py
+```
+
+Observed group level results:
+
+| Group | ORFs higher / scored | P (ORF) | Contigs higher / scored | P (contig) |
+| --- | ---: | ---: | ---: | ---: |
+| Fermentation | 8 / 61 | 1.5e-05 | 6 / 59 | 4.0e-04 |
+| Alkaline candidates | 4 / 126 | 0.28 | 3 / 123 | 0.40 |
+| DUF | 9 / 794 | 1.00 | 9 / 791 | 1.00 |
+| Other themes | 0 / 3 | 1.00 | 0 / 3 | 1.00 |
+
+```text
+RuBisCO set aside as technical: 9 scored, 4 higher
+```
+
+No individual module or DUF family passed a false discovery rate of 0.05. DUF1257 was the strongest family (2 of 5 transcripts higher).
+
+Outputs:
+
+```text
+expanded/enrichment_modules.tsv
+expanded/Fig_MMETSP_all_genes_scatter.png
+```
+
+The scatter plot shows all scored transcripts against the 1:1 line and is intended as a supplementary figure.
+
+### 26.5 Consistency with the 742 gene run
+
+All 18 robust transcripts called higher in the 742 gene run were also called higher in the expanded run:
+
+```bash
+python3 -c "
+import pandas as pd
+o = pd.read_csv('comparison_per_gene.tsv', sep='\t')
+n = pd.read_csv('expanded/comparison_per_gene.tsv', sep='\t')
+o = o[o.call.str.startswith('HIGHER') & (o.n_libs >= 20) & (o.median_pident >= 50)]
+m = o[['orf','module','call']].merge(n[['orf','group','call','n_libs','median_pident','user_pct']], on='orf', how='left', suffixes=('_742','_new'))
+print(m.to_string(index=False))
+"
+```
+
+### 26.6 Annotation checks of the fermentation transcripts
+
+The `Pfam_Name` column of the master table does not always contain the strongest Pfam hit. Fermentation transcripts were therefore checked against the full HMMER domain table:
+
+```bash
+zcat /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/hmmer/spades.transdecoder.Pfam-A.tbl.gz \
+    | grep -wE "NODE_751.p1|NODE_859.p1" \
+    | awk '{print $1, $3, $4, $5}'
+```
+
+Findings used for figure labels:
+
+| ORF | Evidence | Label |
+| --- | --- | --- |
+| `NODE_751.p1`, `NODE_859.p1` | PFL-like (PF02901, E ~ 1e-160) and Gly_radical (PF01228, E ~ 1e-34); KO K00656 | Pyruvate formate lyase |
+| `NODE_859.p1` | also Radical_SAM (PF04055) and Fer4_12 (PF13353) | possible fusion or assembly chimera; not resolved |
+| `NODE_2817.p1` | KO K21990/K21993, eggNOG formate transporter; Pfam DUF6113 | Formate transporter |
+| `NODE_2594.p2` | ADH_Fe_C; KO K00001, but ko_definition gives the bifunctional AdhE | Aldehyde/alcohol dehydrogenase |
+
+The KO and ko_definition of `NODE_2594.p2` disagree, so the protein is not labelled AdhE.
+
+### 26.7 Dumbbell figures
+
+Two dumbbell figures were produced from `expanded/comparison_per_gene.tsv`. Both use a logarithmic axis in (100 − percentile) so that highly expressed transcripts are spread out rather than compressed near the 100th percentile.
+
+The transcript level figure shows every robust higher transcript, one row per contig, one RuBisCO row, and the most expressed housekeeping copy per KO:
+
+```bash
+python3 scripts/46_plot_MMETSP_dumbbell_transcripts.py
+```
+
+The module level figure, used as the main figure, shows one row per function from the alkaline modules figure, the fermentation functions, DUF families containing a higher transcript, and the housekeeping reference:
+
+```bash
+python3 scripts/47_plot_MMETSP_dumbbell_modules.py
+```
+
+Rules of the module level figure:
+
+```text
+row transcript       most expressed robust transcript of the function, regardless of its call
+DUF rows             only families with a higher transcript; the row shows that transcript
+not compared         functions without a robust transcript show only the Deer Lake point, in pink
+right column         number of MMETSP libraries with an ortholog of the row transcript
+x axis               expression percentile within transcriptome, log scale toward 100
+```
+
+The script can be run on a laptop after copying two files from ARC and editing `WORK` and `DIR`:
+
+```bash
+scp ruchita.solanki@arc.ucalgary.ca:/work/ebg_lab/eb/diatom_consortia/mmetsp_comparison/alkaline_adaptation_candidates.csv .
+scp ruchita.solanki@arc.ucalgary.ca:/work/ebg_lab/eb/diatom_consortia/mmetsp_comparison/expanded/comparison_per_gene.tsv expanded/
+pip install pandas numpy matplotlib
+```
+
+Outputs:
+
+```text
+expanded/Fig_MMETSP_dumbbell_expanded.png
+expanded/dumbbell_rows.tsv
+expanded/Fig_MMETSP_dumbbell_modules.png
+expanded/dumbbell_modules_rows.tsv
+```
+
+The row tables list every plotted value, including `k_higher` and `n_scored` for each function, so that each point can be checked against `comparison_per_gene.tsv`. Figures are saved as 1000 dpi PNG files.
+
+### 26.8 Interpretation
+
+The analysis can support wording such as:
+
+> Expression of canonical inorganic carbon and ion homeostasis genes was within the range of MMETSP culture transcriptomes, whereas a pyrophosphate dependent glycolysis and fermentation module ranked above cultures more often than other scored transcripts.
+
+It does not establish:
+
+```text
+differential expression or induction (one condition was compared with other studies)
+a per gene statistical test (the 90th percentile is a threshold, not a P value)
+the cause of the fermentation signal (darkness, low oxygen, or medium cannot be separated)
+biological relevance of RuBisCO ranks (plastid transcripts are depleted in poly(A) libraries)
+links to the seasonal environmental 18S data (the transcriptome derives from the enrichment culture)
+```
+
+</details>
