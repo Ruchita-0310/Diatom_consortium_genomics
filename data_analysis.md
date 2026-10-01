@@ -5944,3 +5944,433 @@ Preferred wording is:
 
 </details>
 
+---
+
+<details>
+<summary><strong>25. Environmental 18S consensus reconstruction and phylogenetic placement</strong> - BBMap, samtools, Clustal Omega, TrimAl, and IQ-TREE 2</summary>
+
+The seasonal 18S recruitment analysis showed that reads closely matching the Deer Lake diatom 18S reference were detected across the environmental libraries. A follow-up analysis was therefore performed to recover one full-length environmental 18S consensus and add it to the existing 18S phylogeny.
+
+The objective was not to generate one consensus per season or to pool environmental libraries. Instead, one untreated environmental library with strong full-length 18S support was selected and used to reconstruct a single reference-guided environmental consensus.
+
+The Deer Lake 18S reference was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/spades/trees/new_18S/Nitzschia_18S_full.fasta
+```
+
+Reference length:
+
+```text
+1,787 bp
+```
+
+The environmental analysis directory was:
+
+```text
+/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+```
+
+### 25.1 Generate and validate environmental 18S BAM files
+
+The BBMap recruitment used for the seasonal occurrence analysis was extended so that coordinate-sorted BAM files were available for all 35 environmental libraries.
+
+Reads were mapped against the 1,787 bp Deer Lake 18S reference using the same stringent identity threshold as the occurrence analysis:
+
+```text
+minid=0.98
+```
+
+The BAM files were stored in:
+
+```text
+Nitzschia_18S_phylogeny/bam/
+```
+
+The number of sorted BAM files was checked with:
+
+```bash
+find Nitzschia_18S_phylogeny/bam \
+    -name "*.sorted.bam" \
+    | wc -l
+```
+
+Output:
+
+```text
+35
+```
+
+BAM integrity was checked with:
+
+```bash
+samtools quickcheck -v \
+    Nitzschia_18S_phylogeny/bam/*.sorted.bam
+```
+
+No output was returned, indicating that all 35 BAM files passed the `samtools quickcheck` test.
+
+### 25.2 Select one untreated environmental library
+
+Only untreated environmental samples were considered for the phylogenetic follow-up.
+
+The subset included:
+
+```text
+Mat libraries
++
+Sediment 0 month libraries
+```
+
+Sediment libraries incubated for 3 or 9 months in darkness were excluded from this selection because the objective was to obtain an environmental sequence representative of the natural Deer Lake samples rather than an incubation treatment.
+
+This produced:
+
+```text
+23 untreated environmental libraries
+```
+
+A strict sequence-resolution screen was used to compare the 23 BAM files. For this screening step, nucleotide positions were evaluated after filtering reads and bases at:
+
+```text
+Minimum mapping quality:       20
+Minimum base quality:          20
+Minimum usable depth:          20
+Major allele fraction:       0.80
+```
+
+This diagnostic screen was used only to choose the most suitable environmental library. Final sequence reconstruction was subsequently performed directly with `samtools consensus`.
+
+The highest-ranking untreated samples included:
+
+| Sample | Resolved positions | Unresolved positions | Low depth | Ambiguous | Differences from reference | Resolved (%) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `LY-FallRNA-Sed0M2_S8` | 1,728 | 59 | 2 | 57 | 3 | 96.6984 |
+| `Li56202-LY-WinRNA-Sed0M3_S9` | 1,705 | 82 | 35 | 47 | 6 | 95.4113 |
+| `LY-WinRNA-MatSite2_S25` | 1,698 | 89 | 20 | 69 | 3 | 95.0196 |
+| `LY-WinRNA-MatSite3_S26` | 1,688 | 99 | 20 | 79 | 5 | 94.4600 |
+| `LY-SumRNA-MatSite6_S3` | 1,683 | 104 | 19 | 85 | 4 | 94.1802 |
+
+The Fall sediment library:
+
+```text
+LY-FallRNA-Sed0M2_S8
+```
+
+was selected because it had the highest proportion of resolved positions among the 23 untreated environmental libraries.
+
+The corresponding BAM file was:
+
+```text
+Nitzschia_18S_phylogeny/bam/LY-FallRNA-Sed0M2_S8.sorted.bam
+```
+
+No untreated sample produced a completely unambiguous 1,787 bp haplotype under the strict screening criteria. This is consistent with the environmental rRNA pool containing closely related 18S sequence variants rather than a clonal isolate sequence.
+
+### 25.3 samtools consensus environment
+
+The ARC `samtools 1.9` installation did not contain the `samtools consensus` command. A separate Conda environment with a newer samtools installation was therefore created:
+
+```bash
+conda create \
+    -n samtools_consensus \
+    -c conda-forge \
+    -c bioconda \
+    samtools \
+    -y
+```
+
+Activate the environment with:
+
+```bash
+conda activate samtools_consensus
+```
+
+The availability of the consensus command was checked with:
+
+```bash
+samtools consensus --help
+```
+
+The installed version supported direct FASTA consensus reconstruction and IUPAC ambiguity codes.
+
+### 25.4 Reconstruct the full-length environmental 18S consensus
+
+The selected Fall sediment BAM was used to reconstruct a reference-length environmental consensus.
+
+The final SLURM workflow was:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=FallSed18S
+#SBATCH --output=logs/FallSed18S_%j.out
+#SBATCH --error=logs/FallSed18S_%j.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=120:00:00
+#SBATCH --mem=16G
+
+set -euo pipefail
+
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate samtools_consensus
+
+BASE=/work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis
+
+BAM=$BASE/Nitzschia_18S_phylogeny/bam/LY-FallRNA-Sed0M2_S8.sorted.bam
+
+OUT=$BASE/Nitzschia_18S_phylogeny/environmental_consensus/DeerLake_environmental_18S_Fall_Sediment.fasta
+
+cd "$BASE"
+
+mkdir -p \
+    Nitzschia_18S_phylogeny/environmental_consensus \
+    logs
+
+samtools quickcheck -v "$BAM"
+
+samtools consensus \
+    -a \
+    -A \
+    -f fasta \
+    --show-ins no \
+    --min-MQ 20 \
+    --min-BQ 20 \
+    -d 20 \
+    -@ 4 \
+    -o "$OUT" \
+    "$BAM"
+
+sed -i \
+    '1c\>Deer_Lake_environmental_18S_Fall_Sediment' \
+    "$OUT"
+```
+
+The important consensus settings were:
+
+```text
+-a
+    retain the complete reference span
+
+-A
+    retain ambiguous nucleotide calls using IUPAC codes
+
+--show-ins no
+    retain the reference-length coordinate system rather than adding
+    read-supported insertions
+
+--min-MQ 20
+    minimum read mapping quality
+
+--min-BQ 20
+    minimum nucleotide base quality
+
+-d 20
+    minimum depth
+```
+
+The final environmental sequence was:
+
+```text
+Nitzschia_18S_phylogeny/environmental_consensus/DeerLake_environmental_18S_Fall_Sediment.fasta
+```
+
+### 25.5 Environmental consensus sequence assessment
+
+The reconstructed sequence was checked for length and unresolved bases.
+
+Observed sequence length:
+
+```text
+1,787 bp
+```
+
+Number of `N` positions:
+
+```text
+0
+```
+
+Because IUPAC ambiguity codes were enabled, mixed nucleotide calls were retained rather than forcing every position to a single A, C, G, or T allele.
+
+The ambiguity codes in the final consensus were:
+
+| IUPAC code | Count |
+| --- | ---: |
+| K | 18 |
+| M | 15 |
+| R | 60 |
+| S | 13 |
+| W | 31 |
+| Y | 74 |
+
+Total IUPAC ambiguous positions:
+
+```text
+211
+```
+
+The final sequence is therefore a **full-length reference-guided environmental 18S consensus**, not a completely resolved clonal 18S haplotype.
+
+The number of ambiguous positions reported by `samtools consensus` is not directly equivalent to the number of ambiguous positions from the initial sample-selection screen because the two steps use different consensus-calling procedures. The screening step was used only to rank candidate environmental samples, whereas the final FASTA was generated directly with the samtools consensus algorithm.
+
+### 25.6 Add the environmental sequence to the existing 18S phylogeny
+
+The environmental sequence was copied to the existing 18S phylogenetic analysis directory:
+
+```bash
+cp \
+    /work/ebg_lab/eb/diatom_consortia/seasonal_organelle_analysis/Nitzschia_18S_phylogeny/environmental_consensus/DeerLake_environmental_18S_Fall_Sediment.fasta \
+    /work/ebg_lab/eb/diatom_consortia/metatranscriptomics/new_results/spades/trees/new_18S/
+```
+
+The existing curated 18S dataset was:
+
+```text
+all_18S.fasta
+```
+
+The original dataset was retained unchanged. A new FASTA containing the same reference sequences plus the environmental consensus was generated with:
+
+```bash
+cat \
+    all_18S.fasta \
+    DeerLake_environmental_18S_Fall_Sediment.fasta \
+    > all_18S_with_environmental.fasta
+```
+
+The new environmental sequence was therefore the only additional sequence introduced into the existing 18S dataset.
+
+### 25.7 Alignment and trimming
+
+The complete dataset was aligned with Clustal Omega:
+
+```bash
+clustalo \
+    -i all_18S_with_environmental.fasta \
+    -o all_18S_with_environmental_aligned.fasta \
+    --force
+```
+
+The alignment was trimmed with TrimAl using the same settings as the original 18S phylogeny:
+
+```bash
+trimal \
+    -in all_18S_with_environmental_aligned.fasta \
+    -out all_18S_with_environmental_trimmed.fasta \
+    -automated1
+```
+
+### 25.8 Maximum-likelihood phylogeny
+
+The updated phylogeny was inferred with IQ-TREE 2 using the same settings as the original Deer Lake 18S analysis:
+
+```bash
+/home/ruchita.solanki/iqtree-2.2.2.7-Linux/bin/iqtree2 \
+    -s all_18S_with_environmental_trimmed.fasta \
+    -m MFP \
+    -bb 1000 \
+    -alrt 1000 \
+    -nt AUTO \
+    -pre DeerLake_18S_environmental
+```
+
+The analysis therefore retained:
+
+```text
+ModelFinder model selection
+1,000 ultrafast bootstrap replicates
+1,000 SH-aLRT replicates
+```
+
+The primary output tree was:
+
+```text
+DeerLake_18S_environmental.treefile
+```
+
+### 25.9 Restore taxon names in the final tree
+
+IQ-TREE output initially retained accession-based identifiers. The existing taxon label file from the original 18S analysis was reused:
+
+```text
+18S_tree_taxa.txt
+```
+
+The file contains labels such as:
+
+```text
+AJ535164.1_Nitzschia_frustulum
+AJ867279.1_Nitzschia_sigma
+AJ867280.1_Nitzschia_vitrea
+```
+
+The following lightweight Python step replaced accession-only labels in the updated Newick tree while retaining the new environmental sequence:
+
+```bash
+python - <<'PY'
+from pathlib import Path
+
+TREE = Path("DeerLake_18S_environmental.treefile")
+MAPPING = Path("18S_tree_taxa.txt")
+OUT = Path("DeerLake_18S_environmental_named.treefile")
+
+tree = TREE.read_text().strip()
+
+for line in MAPPING.read_text().splitlines():
+    label = line.strip()
+
+    if not label:
+        continue
+
+    accession = label.split("_", 1)[0]
+
+    if accession in tree:
+        tree = tree.replace(accession, label)
+
+tree = tree.replace(
+    "18S_rRNA",
+    "Deer_Lake_diatom_18S"
+)
+
+OUT.write_text(tree + "\n")
+
+print("Output:", OUT)
+PY
+```
+
+The final named tree was:
+
+```text
+DeerLake_18S_environmental_named.treefile
+```
+
+The two Deer Lake sequences are labelled separately:
+
+```text
+Deer_Lake_diatom_18S
+Deer_Lake_environmental_18S_Fall_Sediment
+```
+
+The first represents the 18S sequence recovered previously from the Deer Lake diatom consortium metatranscriptome. The second represents the reference-guided full-length environmental consensus reconstructed from the untreated Fall sediment library.
+
+### 25.10 Interpretation and limitations
+
+This analysis provides a phylogenetic placement of an environmental 18S consensus reconstructed from reads closely matching the Deer Lake diatom 18S reference.
+
+The environmental sequence should be described as:
+
+```text
+reference-guided environmental 18S consensus
+```
+
+rather than as an isolate sequence or independently assembled environmental haplotype.
+
+The sequence contains 211 IUPAC ambiguity positions, indicating nucleotide mixtures in the recruited environmental reads. These positions were retained rather than arbitrarily selecting one allele, avoiding construction of an artificially resolved sequence.
+
+Because the environmental reads were first recruited against the Deer Lake 18S reference using a minimum identity threshold of 0.98, the resulting sequence is not independent evidence of taxonomic identity. Its primary use is to evaluate the phylogenetic placement of the environmental Nitzschia like 18S signal relative to the Deer Lake consortium sequence and the same curated diatom reference taxa used in the original 18S tree.
+
+Phylogenetic interpretation should therefore focus on tree placement and branch support rather than assigning exact species identity from the environmental consensus alone.
+
+</details>
