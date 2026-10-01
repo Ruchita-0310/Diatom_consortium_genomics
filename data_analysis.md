@@ -1,5 +1,5 @@
 # Diatom Consortia: Metagenomic and Metatranscriptomic Pipeline
-This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The current workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware gene curation, four genome nucleotide comparison, secondary protein orthology analysis, ORF level comparative metatranscriptomics, Hi C contact network analysis, and seasonal recruitment of Deer Lake Nitzschia like 18S rRNA reads across mat, sediment, and dark incubation samples.
+This repository documents the workflow used to assemble, polish, bin, classify, annotate, and compare genomes and transcriptomes from a diatom associated microbial consortium. The current workflow combines long read metagenomic assembly, short read polishing, metagenomic binning, contig level taxonomic screening, organelle identification, marker based phylogenetic analyses, transcriptome analysis, BRAKER4 ET gene prediction, nuclear enriched genome generation, functional annotation, expression integration, repeat aware gene curation, four genome nucleotide comparison, secondary protein orthology analysis, ORF level comparative metatranscriptomics, Hi C contact network analysis, seasonal recruitment of Deer Lake Nitzschia like 18S rRNA reads across mat, sediment, and dark incubation samples, environmental 18S consensus placement, and comparison of Deer Lake ORF expression with MMETSP culture transcriptomes.
 
 ---
 
@@ -62,6 +62,18 @@ Whole assembly network visualization
 Seasonal eukaryotic rRNA read recruitment to Deer Lake Nitzschia 18S
    ↓
 Season, sampling type, and dark incubation occurrence analysis
+   ↓
+Environmental 18S consensus reconstruction and phylogenetic placement
+   ↓
+Expanded query set: alkaline, fermentation, DUF, and housekeeping ORFs
+   ↓
+DIAMOND search against 645 MMETSP culture transcriptomes
+   ↓
+Within transcriptome rank and housekeeping normalized comparison
+   ↓
+Group and module enrichment of transcripts above cultures
+   ↓
+Transcript and module level dumbbell figures
 ```
 ---
 
@@ -75,16 +87,18 @@ The workflow used Conda environments, Singularity containers, and local HPC modu
 | Assembly quality                 | BUSCO, QUAST/MetaQUAST                                                                                                                  |
 | Binning and bin quality          | MetaBAT2, CheckM2                                                                                                                       |
 | Taxonomy and abundance           | GTDB-Tk, MetaEuk, CoverM                                                                                                                |
-| Organelle identification         | MetaQUAST, fastANI, minimap2, samtools, bedtools, seqkit, Python                                                                         |
-| Phylogenetics                    | Barrnap, BLAST+, bedtools, seqkit, Clustal Omega, TrimAl, IQ-TREE 2, Python                                                            |
+| Organelle identification         | MetaQUAST, fastANI, minimap2, samtools, bedtools, seqkit, Python                                                                        |
+| Phylogenetics                    | Barrnap, BLAST+, bedtools, seqkit, Clustal Omega, TrimAl, IQ-TREE 2, Python                                                             |
 | Transcriptomics                  | Nextflow, nf-core/metatdenovo, TransDecoder, Barrnap, STAR                                                                              |
-| Comparative metatranscriptomics    | BLAST+, KOfam, EggNOG mapper, HMMER/Pfam, Python, pandas, Matplotlib                                                                    |
+| Comparative metatranscriptomics  | BLAST+, KOfam, EggNOG mapper, HMMER/Pfam, Python, pandas, Matplotlib                                                                    |
 | Genome annotation                | BRAKER4, GeneMark-ET, AUGUSTUS, TSEBRA, STAR, BUSCO/compleasm                                                                           |
 | Functional annotation            | DIAMOND, UniProtKB/Swiss-Prot, UniProtKB Bacillariophyta, InterProScan, Pfam, PANTHER, Gene3D, CDD, SMART, SUPERFAMILY, ProSite, Python |
 | Expression integration           | DIAMOND, Python, pandas, TransDecoder ORFs, Average_TPM table                                                                           |
-| Comparative genomics             | NCBI RefSeq/FTP, BLASTN, bedtools, seqkit, RepeatModeler, RepeatMasker, OrthoFinder, DIAMOND, FAMSA, FastTree, Python                 |
+| Comparative genomics             | NCBI RefSeq/FTP, BLASTN, bedtools, seqkit, RepeatModeler, RepeatMasker, OrthoFinder, DIAMOND, FAMSA, FastTree, Python                   |
 | Hi-C mapping and contact network | FastQC, MultiQC, BWA-MEM, samtools, seqkit, YaHS, awk, Python                                                                           |
-| Seasonal 18S occurrence          | MEGAHIT, Barrnap, bedtools, BLAST+, SILVA SSU Ref NR99 138.2, BBMap, samtools, Python, pandas, Matplotlib                         |
+| Seasonal 18S occurrence          | MEGAHIT, Barrnap, bedtools, BLAST+, SILVA SSU Ref NR99 138.2, BBMap, samtools, Python, pandas, Matplotlib                               |
+| Environmental 18S consensus      | BBMap, samtools (consensus), Clustal Omega, TrimAl, IQ-TREE 2, Python                                                                   |
+| MMETSP expression comparison     | MMETSP Zenodo reassembly, DIAMOND, seqkit, HMMER/Pfam, Python, pandas, NumPy, Matplotlib                                                |
 
 ---
 
