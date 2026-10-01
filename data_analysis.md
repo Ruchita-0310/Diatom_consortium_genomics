@@ -6736,15 +6736,6 @@ not compared         functions without a robust transcript show only the Deer La
 right column         number of MMETSP libraries with an ortholog of the row transcript
 x axis               expression percentile within transcriptome, log scale toward 100
 ```
-
-The script can be run on a laptop after copying two files from ARC and editing `WORK` and `DIR`:
-
-```bash
-scp ruchita.solanki@arc.ucalgary.ca:/work/ebg_lab/eb/diatom_consortia/mmetsp_comparison/alkaline_adaptation_candidates.csv .
-scp ruchita.solanki@arc.ucalgary.ca:/work/ebg_lab/eb/diatom_consortia/mmetsp_comparison/expanded/comparison_per_gene.tsv expanded/
-pip install pandas numpy matplotlib
-```
-
 Outputs:
 
 ```text
