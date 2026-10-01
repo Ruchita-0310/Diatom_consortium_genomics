@@ -6389,6 +6389,8 @@ Phylogenetic interpretation should therefore focus on tree placement and branch 
 
 </details>
 
+---
+
 <details>
 <summary><strong>26. Expression of Deer Lake <em>Nitzschia</em> ORFs relative to MMETSP culture transcriptomes</strong> - DIAMOND, seqkit, Python, pandas, NumPy, and Matplotlib</summary>
 
